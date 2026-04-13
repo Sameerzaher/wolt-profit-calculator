@@ -7,57 +7,59 @@ import DailySummary from "@/components/DailySummary";
 import HistoryList from "@/components/HistoryList";
 import InstallHint from "@/components/InstallHint";
 import ResultCard from "@/components/ResultCard";
-import SettingsCard from "@/components/SettingsCard";
 import ThemeToggle from "@/components/ThemeToggle";
 import { formatDateTime } from "@/lib/date";
 import { hapticLight } from "@/lib/haptics";
 import { parseBackupFile } from "@/lib/backup";
-import { calculateDelivery, defaultScoringSettings } from "@/lib/scoring";
+import { evaluateCourierOrder } from "@/lib/evaluateOrder";
 import {
   addDelivery,
   applyValidatedBackup,
   clearAllDeliveries,
   deleteDeliveryById,
   exportBackupPayload,
+  loadDailyPrefs,
   loadDeliveries,
-  loadScoringSettings,
   loadTheme,
-  saveScoringSettings,
+  saveDailyPrefs,
   saveTheme,
   updateDeliveryById
 } from "@/lib/storage";
-import type { CalculatorInput, SavedDelivery, ScoringSettings } from "@/lib/types";
+import type { CalculatorInput, DailySummaryPrefs, SavedDelivery } from "@/lib/types";
 
 const KEEP_LAST_KEY = "wolt_keep_last_after_save_v1";
 
 type HistoryFilter = "today" | "all";
 
 const defaultInput: CalculatorInput = {
-  payout: 30,
-  minutes: 20,
-  km: 8,
-  isPeakHour: false,
-  inHotZone: true,
-  nextOrderChance: "medium"
+  price: 30,
+  distanceKm: 3.5,
+  estimatedMinutes: null,
+  cashTip: 0,
+  isDoubleOrder: false,
+  leavesHotZone: false
 };
 
 export default function HomePage() {
   const [input, setInput] = useState<CalculatorInput>(defaultInput);
   const [inputIssues, setInputIssues] = useState<string[]>([]);
   const [deliveries, setDeliveries] = useState<SavedDelivery[]>([]);
+  const [dailyPrefs, setDailyPrefs] = useState<DailySummaryPrefs>({
+    hoursWorked: 0,
+    cashTipsNis: 0,
+    tipsInputMode: "from_history"
+  });
   const [filter, setFilter] = useState<HistoryFilter>("today");
-  const [mode, setMode] = useState<"quick" | "advanced">("quick");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingCreatedAt, setEditingCreatedAt] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
-  const [settings, setSettings] = useState<ScoringSettings>(defaultScoringSettings);
   const [keepLastAfterSave, setKeepLastAfterSave] = useState(false);
 
-  const settingsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dailySaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setDeliveries(loadDeliveries());
-    setSettings(loadScoringSettings());
+    setDailyPrefs(loadDailyPrefs());
     const initialTheme = loadTheme();
     setIsDark(initialTheme === "dark");
     document.documentElement.classList.toggle("dark", initialTheme === "dark");
@@ -69,21 +71,17 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (settingsSaveTimer.current) clearTimeout(settingsSaveTimer.current);
-    settingsSaveTimer.current = setTimeout(() => saveScoringSettings(settings), 400);
+    if (dailySaveTimer.current) clearTimeout(dailySaveTimer.current);
+    dailySaveTimer.current = setTimeout(() => saveDailyPrefs(dailyPrefs), 400);
     return () => {
-      if (settingsSaveTimer.current) clearTimeout(settingsSaveTimer.current);
+      if (dailySaveTimer.current) clearTimeout(dailySaveTimer.current);
     };
-  }, [settings]);
+  }, [dailyPrefs]);
 
   const result = useMemo(() => {
     if (inputIssues.length > 0) return null;
-    try {
-      return calculateDelivery(input, settings);
-    } catch {
-      return null;
-    }
-  }, [input, settings, inputIssues]);
+    return evaluateCourierOrder(input);
+  }, [input, inputIssues]);
 
   const setKeepLastPreference = useCallback((next: boolean) => {
     setKeepLastAfterSave(next);
@@ -150,12 +148,12 @@ export default function HomePage() {
 
   const startEdit = (delivery: SavedDelivery) => {
     setInput({
-      payout: delivery.payout,
-      minutes: delivery.minutes,
-      km: delivery.km,
-      isPeakHour: delivery.isPeakHour,
-      inHotZone: delivery.inHotZone,
-      nextOrderChance: delivery.nextOrderChance
+      price: delivery.price,
+      distanceKm: delivery.distanceKm,
+      estimatedMinutes: delivery.estimatedMinutes,
+      cashTip: delivery.cashTip,
+      isDoubleOrder: delivery.isDoubleOrder,
+      leavesHotZone: delivery.leavesHotZone
     });
     setInputIssues([]);
     setEditingId(delivery.id);
@@ -167,12 +165,12 @@ export default function HomePage() {
     const latest = deliveries[0];
     if (!latest) return;
     setInput({
-      payout: latest.payout,
-      minutes: latest.minutes,
-      km: latest.km,
-      isPeakHour: latest.isPeakHour,
-      inHotZone: latest.inHotZone,
-      nextOrderChance: latest.nextOrderChance
+      price: latest.price,
+      distanceKm: latest.distanceKm,
+      estimatedMinutes: latest.estimatedMinutes,
+      cashTip: latest.cashTip,
+      isDoubleOrder: latest.isDoubleOrder,
+      leavesHotZone: latest.leavesHotZone
     });
     setInputIssues([]);
     setEditingId(null);
@@ -213,20 +211,21 @@ export default function HomePage() {
 
     const hasData = deliveries.length > 0;
     if (hasData) {
-      const ok = window.confirm("הייבוא יחליף את ההיסטוריה וההגדרות במכשיר. להמשיך?");
+      const ok = window.confirm(
+        "\u05d4\u05d9\u05d9\u05d1\u05d5\u05d0 \u05d9\u05d7\u05dc\u05d9\u05e3 \u05d0\u05ea \u05d4\u05d4\u05d9\u05e1\u05d8\u05d5\u05e8\u05d9\u05d4 \u05d1\u05de\u05db\u05e9\u05d9\u05e8. \u05dc\u05d4\u05de\u05e9\u05d9\u05da?"
+      );
       if (!ok) return;
     }
 
     try {
       const applied = applyValidatedBackup(res.payload);
       setDeliveries(applied.deliveries);
-      setSettings(applied.settings);
       setEditingId(null);
       setEditingCreatedAt(null);
       setInput(defaultInput);
       setInputIssues([]);
       window.alert("הגיבוי יובא בהצלחה.");
-   } catch {
+    } catch {
       window.alert("שגיאה בשמירת הנתונים לאחר הייבוא.");
     }
   };
@@ -235,48 +234,24 @@ export default function HomePage() {
     <main className="mx-auto max-w-md space-y-4 px-4 pb-40 pt-4">
       <header className="mb-2 flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-black leading-tight">Wolt Delivery Calculator</h1>
-          <p className="mt-1 text-base text-muted">כלי אישי מהיר להחלטה על משלוח</p>
+          <h1 className="text-2xl font-black leading-tight">Courier Decision Assistant</h1>
+          <p className="mt-1 text-base text-muted">החלטה מהירה על משלוח — מותאם לנייד</p>
         </div>
         <ThemeToggle isDark={isDark} onToggle={toggleTheme} />
       </header>
 
       <InstallHint />
 
-      <section className="inline-flex rounded-xl border border-border p-1">
-        <button
-          type="button"
-          onClick={() => setMode("quick")}
-          className={`rounded-lg px-4 py-2.5 text-base font-semibold ${mode === "quick" ? "bg-primary/15 text-primary" : "text-muted"}`}
-        >
-          מצב מהיר
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("advanced")}
-          className={`rounded-lg px-4 py-2.5 text-base font-semibold ${mode === "advanced" ? "bg-primary/15 text-primary" : "text-muted"}`}
-        >
-          מצב מתקדם
-        </button>
-      </section>
-
       {editingId && editingCreatedAt && (
         <section className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-base font-semibold">
-          מצב עריכה: משלוח מ־{formatDateTime(editingCreatedAt)}
+          {"\u05de\u05e6\u05d1 \u05e2\u05e8\u05d9\u05db\u05d4: \u05d1\u05d3\u05d9\u05e7\u05d4 \u05de\u2014 "}
+          {formatDateTime(editingCreatedAt)}
         </section>
       )}
 
-      <DailySummary deliveries={deliveries} />
-      <CalculatorForm value={input} onChange={setInput} onValidityChange={setInputIssues} mode={mode} />
-      {mode === "advanced" && (
-        <SettingsCard
-          settings={settings}
-          onChange={setSettings}
-          onReset={() => setSettings(defaultScoringSettings)}
-        />
-      )}
-      <BackupCard onExport={handleExportBackup} onImport={handleImportBackup} />
+      <CalculatorForm value={input} onChange={setInput} onValidityChange={setInputIssues} />
       <ResultCard result={result} inputIssues={inputIssues} />
+      <DailySummary deliveries={deliveries} prefs={dailyPrefs} onPrefsChange={setDailyPrefs} />
       <HistoryList
         deliveries={deliveries}
         filter={filter}
@@ -286,6 +261,7 @@ export default function HomePage() {
         onDelete={handleDelete}
         onClearAll={handleClearAll}
       />
+      <BackupCard onExport={handleExportBackup} onImport={handleImportBackup} />
 
       <div className="fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-md border-t border-border bg-bg/95 p-3 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.08)] backdrop-blur-md dark:shadow-[0_-4px_24px_rgba(0,0,0,0.4)]">
         {editingId && (
@@ -314,7 +290,7 @@ export default function HomePage() {
             onClick={handleSave}
             className="w-[64%] rounded-xl bg-primary py-4 text-lg font-extrabold text-white shadow-lg shadow-primary/25 transition active:scale-[0.99]"
           >
-            {editingId ? "עדכן" : "שמור משלוח"}
+            {editingId ? "עדכן בדיקה" : "שמור בדיקה"}
           </button>
         </div>
 

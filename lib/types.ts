@@ -1,47 +1,43 @@
-export type NextOrderChance = "high" | "medium" | "low";
-
-export type Verdict = "שווה מאוד" | "שווה" | "גבולי" | "לא שווה";
+export type DecisionKind = "strong_accept" | "accept" | "depends" | "reject";
 
 export type CalculatorInput = {
-  payout: number;
-  minutes: number;
-  km: number;
-  isPeakHour: boolean;
-  inHotZone: boolean;
-  nextOrderChance: NextOrderChance;
+  price: number;
+  distanceKm: number;
+  /** When null, NIS/hour is not computed and hourly rules stay neutral */
+  estimatedMinutes: number | null;
+  cashTip: number;
+  isDoubleOrder: boolean;
+  leavesHotZone: boolean;
 };
 
-export type CalculationResult = {
-  ilsPerMinute: number;
-  ilsPerKm: number;
-  netPayout: number;
-  netIlsPerMinute: number;
-  netIlsPerKm: number;
+export type OrderEvaluation = {
+  nisPerKm: number;
+  nisPerHour: number | null;
+  /** 0–100 */
   score: number;
-  verdict: Verdict;
-  explanation: string;
-  recommendation: string;
-};
-
-export type ScoringSettings = {
-  costPerKm: number;
-  peakBonus: number;
-  outOfHotZonePenalty: number;
-  lowChancePenalty: number;
-  mediumChancePenalty: number;
-  highChanceBonus: number;
+  decision: DecisionKind;
+  /** Short combined line for quick scanning */
+  reason: string;
+  /** Bullet explanations for the UI */
+  reasons: string[];
 };
 
 export type SavedDelivery = CalculatorInput &
-  CalculationResult & {
+  OrderEvaluation & {
     id: string;
     createdAt: string;
   };
 
+/** v2 backup on disk */
 export type BackupPayload = {
   deliveries: SavedDelivery[];
-  settings: ScoringSettings;
   exportedAt: string;
-  /** Matches BACKUP_SCHEMA_VERSION in lib/constants */
-  version: number;
+  version: 2;
+};
+
+export type DailySummaryPrefs = {
+  hoursWorked: number;
+  /** Meaning depends on tipsInputMode */
+  cashTipsNis: number;
+  tipsInputMode: "from_history" | "manual";
 };

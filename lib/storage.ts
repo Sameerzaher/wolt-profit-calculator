@@ -1,11 +1,12 @@
-import { defaultScoringSettings } from "./scoring";
-import type { BackupPayload, SavedDelivery, ScoringSettings } from "./types";
+import type { BackupPayload, DailySummaryPrefs, SavedDelivery } from "./types";
 import { BACKUP_SCHEMA_VERSION, MAX_STORED_DELIVERIES } from "./constants";
 import { normalizeSavedDelivery } from "./normalize";
+import { validateDailyPrefs } from "./backup";
 
-const STORAGE_KEY = "wolt_delivery_calculator_v1";
+const STORAGE_KEY = "wolt_delivery_calculator_v2";
+const LEGACY_STORAGE_KEY = "wolt_delivery_calculator_v1";
 const THEME_KEY = "wolt_delivery_theme_v1";
-const SETTINGS_KEY = "wolt_scoring_settings_v1";
+const DAILY_PREFS_KEY = "wolt_daily_summary_prefs_v1";
 
 function capDeliveries(list: SavedDelivery[]): SavedDelivery[] {
   return list.slice(0, MAX_STORED_DELIVERIES);
@@ -15,8 +16,11 @@ export function loadDeliveries(): SavedDelivery[] {
   if (typeof window === "undefined") return [];
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (!raw) return [];
+    }
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     const cleaned: SavedDelivery[] = [];
@@ -24,7 +28,16 @@ export function loadDeliveries(): SavedDelivery[] {
       const n = normalizeSavedDelivery(row);
       if (n) cleaned.push(n);
     }
-    return capDeliveries(cleaned);
+    const out = capDeliveries(cleaned);
+    if (!localStorage.getItem(STORAGE_KEY) && out.length > 0) {
+      saveDeliveries(out);
+      try {
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+    return out;
   } catch {
     return [];
   }
@@ -85,26 +98,29 @@ export function saveTheme(theme: "light" | "dark"): void {
   }
 }
 
-export function loadScoringSettings(): ScoringSettings {
-  if (typeof window === "undefined") return defaultScoringSettings;
+const defaultDailyPrefs: DailySummaryPrefs = {
+  hoursWorked: 0,
+  cashTipsNis: 0,
+  tipsInputMode: "from_history"
+};
 
+export function loadDailyPrefs(): DailySummaryPrefs {
+  if (typeof window === "undefined") return defaultDailyPrefs;
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return defaultScoringSettings;
-    const parsed = JSON.parse(raw) as Partial<ScoringSettings>;
-    return {
-      ...defaultScoringSettings,
-      ...parsed
-    };
+    const raw = localStorage.getItem(DAILY_PREFS_KEY);
+    if (!raw) return defaultDailyPrefs;
+    const parsed = JSON.parse(raw) as unknown;
+    const v = validateDailyPrefs(parsed);
+    return v ?? defaultDailyPrefs;
   } catch {
-    return defaultScoringSettings;
+    return defaultDailyPrefs;
   }
 }
 
-export function saveScoringSettings(settings: ScoringSettings): void {
+export function saveDailyPrefs(prefs: DailySummaryPrefs): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    localStorage.setItem(DAILY_PREFS_KEY, JSON.stringify(prefs));
   } catch {
     /* ignore */
   }
@@ -113,23 +129,18 @@ export function saveScoringSettings(settings: ScoringSettings): void {
 export function exportBackupPayload(): BackupPayload {
   return {
     deliveries: loadDeliveries(),
-    settings: loadScoringSettings(),
     exportedAt: new Date().toISOString(),
     version: BACKUP_SCHEMA_VERSION
   };
 }
 
 /** Apply a payload already validated by parseBackupFile */
-export function applyValidatedBackup(payload: BackupPayload): {
-  deliveries: SavedDelivery[];
-  settings: ScoringSettings;
-} {
+export function applyValidatedBackup(payload: BackupPayload): { deliveries: SavedDelivery[] } {
   const deliveries = capDeliveries(payload.deliveries);
   try {
     saveDeliveries(deliveries);
-    saveScoringSettings(payload.settings);
   } catch {
     /* best effort */
   }
-  return { deliveries, settings: payload.settings };
+  return { deliveries };
 }

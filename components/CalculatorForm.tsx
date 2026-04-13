@@ -2,66 +2,74 @@
 
 import type { ChangeEvent, KeyboardEvent, Ref } from "react";
 import { useEffect, useRef, useState } from "react";
-import type { CalculatorInput, NextOrderChance } from "@/lib/types";
+import type { CalculatorInput } from "@/lib/types";
 import { parseIntLoose, parseMoney, validateCalculatorInput } from "@/lib/inputValidation";
 
 type CalculatorFormProps = {
   value: CalculatorInput;
   onChange: (next: CalculatorInput) => void;
   onValidityChange: (issues: string[]) => void;
-  mode: "quick" | "advanced";
 };
 
-const chanceOptions: { value: NextOrderChance; label: string }[] = [
-  { value: "high", label: "גבוה" },
-  { value: "medium", label: "בינוני" },
-  { value: "low", label: "נמוך" }
-];
-
-const presets = [
-  { label: "צהריים", isPeakHour: true, nextOrderChance: "high" as NextOrderChance },
-  { label: "ערב", isPeakHour: true, nextOrderChance: "medium" as NextOrderChance },
-  { label: "סופ״ש", isPeakHour: true, nextOrderChance: "high" as NextOrderChance }
-];
-
-function clampPayout(n: number): number {
-  return Math.min(2000, Math.max(0, n));
-}
-
-function clampMinutes(n: number): number {
-  return Math.min(400, Math.max(1, Math.round(n)));
+function clampPrice(n: number): number {
+  return Math.min(5000, Math.max(0, n));
 }
 
 function clampKm(n: number): number {
   return Math.min(150, Math.max(0.1, Math.round(n * 10) / 10));
 }
 
-type Triplet = { p: string; m: string; k: string };
+function clampMinutes(n: number): number {
+  return Math.min(400, Math.max(1, Math.round(n)));
+}
 
-function tryCommit(t: Triplet, rest: CalculatorInput): { ok: true; next: CalculatorInput } | { ok: false; issues: string[] } {
-  const payout = parseMoney(t.p);
-  const minutesRaw = parseIntLoose(t.m);
-  const km = parseMoney(t.k);
+function clampTip(n: number): number {
+  return Math.min(2000, Math.max(0, n));
+}
 
-  if (payout === null || km === null || minutesRaw === null) {
+type Fields = { price: string; km: string; minutes: string; tip: string };
+
+function tryCommit(
+  text: Fields,
+  flags: Pick<CalculatorInput, "isDoubleOrder" | "leavesHotZone">
+): { ok: true; next: CalculatorInput } | { ok: false; issues: string[] } {
+  const price = parseMoney(text.price);
+  const km = parseMoney(text.km);
+  const minutesEmpty = text.minutes.trim() === "";
+  const minutesParsed = minutesEmpty ? null : parseIntLoose(text.minutes);
+  const tipRaw = text.tip.trim() === "" ? 0 : parseMoney(text.tip);
+
+  if (price === null || km === null) {
     const partial: CalculatorInput = {
-      ...rest,
-      payout: payout ?? -1,
-      minutes: minutesRaw !== null ? minutesRaw : 0,
-      km: km ?? -1
+      price: price ?? -1,
+      distanceKm: km ?? -1,
+      estimatedMinutes: minutesEmpty ? null : minutesParsed,
+      cashTip: tipRaw === null ? -1 : tipRaw,
+      isDoubleOrder: flags.isDoubleOrder,
+      leavesHotZone: flags.leavesHotZone
     };
     const v = validateCalculatorInput(partial);
     return {
       ok: false,
-      issues: v.length ? v : ["מלא את כל השדות (תשלום, דקות, ק״מ)."]
+      issues: v.length ? v : ["מלא מחיר ומרחק."]
     };
   }
 
+  if (!minutesEmpty && (minutesParsed === null || minutesParsed <= 0)) {
+    return { ok: false, issues: ["הזן זמן משוער בדקות תקין, או השאר ריק."] };
+  }
+
+  if (tipRaw === null) {
+    return { ok: false, issues: ["הזן טיפ מזומן תקין (או 0)."] };
+  }
+
   const next: CalculatorInput = {
-    ...rest,
-    payout: clampPayout(payout),
-    minutes: clampMinutes(minutesRaw),
-    km: clampKm(km)
+    price: clampPrice(price),
+    distanceKm: clampKm(km),
+    estimatedMinutes: minutesEmpty ? null : clampMinutes(minutesParsed as number),
+    cashTip: clampTip(tipRaw),
+    isDoubleOrder: flags.isDoubleOrder,
+    leavesHotZone: flags.leavesHotZone
   };
 
   const issues = validateCalculatorInput(next);
@@ -79,7 +87,8 @@ function FieldRow({
   inputMode,
   onMinus,
   onPlus,
-  onPlusExtra
+  onPlusExtra,
+  optional
 }: {
   label: string;
   inputId: string;
@@ -91,11 +100,13 @@ function FieldRow({
   onMinus: () => void;
   onPlus: () => void;
   onPlusExtra?: () => void;
+  optional?: boolean;
 }) {
   return (
     <div>
       <label className="label-base" htmlFor={inputId}>
         {label}
+        {optional && <span className="mr-1 text-sm font-normal text-muted">(רשות)</span>}
       </label>
       <div className="flex gap-2">
         <input
@@ -130,34 +141,43 @@ function FieldRow({
   );
 }
 
-export default function CalculatorForm({ value, onChange, onValidityChange, mode }: CalculatorFormProps) {
-  const [text, setText] = useState<Triplet>({
-    p: String(value.payout),
-    m: String(value.minutes),
-    k: String(value.km)
+export default function CalculatorForm({ value, onChange, onValidityChange }: CalculatorFormProps) {
+  const [text, setText] = useState<Fields>({
+    price: String(value.price),
+    km: String(value.distanceKm),
+    minutes: value.estimatedMinutes === null ? "" : String(value.estimatedMinutes),
+    tip: value.cashTip === 0 ? "" : String(value.cashTip)
   });
 
-  const payoutRef = useRef<HTMLInputElement>(null);
-  const minutesRef = useRef<HTMLInputElement>(null);
+  const priceRef = useRef<HTMLInputElement>(null);
   const kmRef = useRef<HTMLInputElement>(null);
+  const minutesRef = useRef<HTMLInputElement>(null);
+  const tipRef = useRef<HTMLInputElement>(null);
 
-  const syncKey = `${value.payout}|${value.minutes}|${value.km}|${value.isPeakHour}|${value.inHotZone}|${value.nextOrderChance}`;
+  const syncKey = `${value.price}|${value.distanceKm}|${value.estimatedMinutes ?? ""}|${value.cashTip}|${value.isDoubleOrder}|${value.leavesHotZone}`;
   const lastSync = useRef("");
 
   useEffect(() => {
     if (syncKey !== lastSync.current) {
       lastSync.current = syncKey;
-      setText({ p: String(value.payout), m: String(value.minutes), k: String(value.km) });
+      setText({
+        price: String(value.price),
+        km: String(value.distanceKm),
+        minutes: value.estimatedMinutes === null ? "" : String(value.estimatedMinutes),
+        tip: value.cashTip === 0 ? "" : String(value.cashTip)
+      });
     }
-  }, [syncKey, value.payout, value.minutes, value.km, value.isPeakHour, value.inHotZone, value.nextOrderChance]);
+  }, [syncKey, value.price, value.distanceKm, value.estimatedMinutes, value.cashTip, value.isDoubleOrder, value.leavesHotZone]);
 
   useEffect(() => {
-    const t = window.setTimeout(() => payoutRef.current?.focus(), 50);
+    const t = window.setTimeout(() => priceRef.current?.focus(), 50);
     return () => window.clearTimeout(t);
   }, []);
 
-  const emit = (nextText: Triplet) => {
-    const res = tryCommit(nextText, value);
+  const flags = { isDoubleOrder: value.isDoubleOrder, leavesHotZone: value.leavesHotZone };
+
+  const emit = (nextText: Fields) => {
+    const res = tryCommit(nextText, flags);
     if (res.ok) {
       onValidityChange([]);
       onChange(res.next);
@@ -166,107 +186,87 @@ export default function CalculatorForm({ value, onChange, onValidityChange, mode
     }
   };
 
-  const focusNext = (current: "payout" | "minutes" | "km") => {
-    if (current === "payout") minutesRef.current?.focus();
-    else if (current === "minutes") kmRef.current?.focus();
-    else payoutRef.current?.focus();
+  const focusNext = (current: "price" | "km" | "minutes" | "tip") => {
+    if (current === "price") kmRef.current?.focus();
+    else if (current === "km") minutesRef.current?.focus();
+    else if (current === "minutes") tipRef.current?.focus();
+    else priceRef.current?.focus();
   };
 
-  const bumpField = (field: "p" | "m" | "k", delta: number) => {
-    const cur = tryCommit(text, value);
+  const bumpField = (field: keyof Fields, delta: number) => {
+    const cur = tryCommit(text, flags);
     const base = cur.ok ? cur.next : value;
-    let p = base.payout;
-    let m = base.minutes;
-    let km = base.km;
-    if (field === "p") p = clampPayout(p + delta);
-    if (field === "m") m = clampMinutes(m + delta);
-    if (field === "k") km = clampKm(km + delta);
-    const nextText: Triplet = { p: String(p), m: String(m), k: String(km) };
+    let price = base.price;
+    let km = base.distanceKm;
+    let minutes = base.estimatedMinutes;
+    let tip = base.cashTip;
+
+    if (field === "price") price = clampPrice(price + delta);
+    if (field === "km") km = clampKm(km + delta);
+    if (field === "minutes") {
+      const m = minutes === null ? 15 : minutes;
+      minutes = clampMinutes(m + delta);
+    }
+    if (field === "tip") tip = clampTip(tip + delta);
+
+    const nextText: Fields = {
+      price: String(price),
+      km: String(km),
+      minutes: minutes === null ? "" : String(minutes),
+      tip: tip === 0 ? "" : String(tip)
+    };
     setText(nextText);
     emit(nextText);
   };
 
-  const setBool = (key: "isPeakHour" | "inHotZone") => (e: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...value, [key]: e.target.checked });
+  const setBool = (key: "isDoubleOrder" | "leavesHotZone") => (e: ChangeEvent<HTMLInputElement>) => {
+    const nextFlags = { ...flags, [key]: e.target.checked };
+    const res = tryCommit(text, nextFlags);
+    if (res.ok) {
+      onValidityChange([]);
+      onChange(res.next);
+    } else {
+      onValidityChange(res.issues);
+    }
   };
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-soft">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-bold">מחשבון משלוח</h2>
-      </div>
-
-      <div className="mb-4 grid grid-cols-3 gap-2">
-        {presets.map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            onClick={() =>
-              onChange({
-                ...value,
-                isPeakHour: preset.isPeakHour,
-                nextOrderChance: preset.nextOrderChance
-              })
-            }
-            className="rounded-xl border border-border px-3 py-2 text-sm font-medium transition active:scale-[0.98]"
-          >
-            {preset.label}
-          </button>
-        ))}
+        <h2 className="text-lg font-bold">בדוק הזמנה</h2>
       </div>
 
       <div className="space-y-5">
         <FieldRow
-          label="תשלום (₪)"
-          inputId="payout"
-          inputRef={payoutRef}
-          fieldValue={text.p}
+          label="מחיר"
+          inputId="price"
+          inputRef={priceRef}
+          fieldValue={text.price}
           inputMode="numeric"
           onValueChange={(v) => {
-            const next = { ...text, p: v };
+            const next = { ...text, price: v };
             setText(next);
             emit(next);
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              focusNext("payout");
+              focusNext("price");
             }
           }}
-          onMinus={() => bumpField("p", -5)}
-          onPlus={() => bumpField("p", 5)}
-          onPlusExtra={() => bumpField("p", 10)}
+          onMinus={() => bumpField("price", -5)}
+          onPlus={() => bumpField("price", 5)}
+          onPlusExtra={() => bumpField("price", 10)}
         />
 
         <FieldRow
-          label="זמן משוער (דקות)"
-          inputId="minutes"
-          inputRef={minutesRef}
-          fieldValue={text.m}
-          inputMode="numeric"
-          onValueChange={(v) => {
-            const next = { ...text, m: v };
-            setText(next);
-            emit(next);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              focusNext("minutes");
-            }
-          }}
-          onMinus={() => bumpField("m", -5)}
-          onPlus={() => bumpField("m", 5)}
-        />
-
-        <FieldRow
-          label="מרחק משוער (ק״מ)"
+          label={"\u05de\u05e8\u05d7\u05e7 \u05d1\u05e7\u05f4\u05de"}
           inputId="km"
           inputRef={kmRef}
-          fieldValue={text.k}
-          inputMode="numeric"
+          fieldValue={text.km}
+          inputMode="decimal"
           onValueChange={(v) => {
-            const next = { ...text, k: v };
+            const next = { ...text, km: v };
             setText(next);
             emit(next);
           }}
@@ -276,41 +276,73 @@ export default function CalculatorForm({ value, onChange, onValidityChange, mode
               focusNext("km");
             }
           }}
-          onMinus={() => bumpField("k", -1)}
-          onPlus={() => bumpField("k", 1)}
+          onMinus={() => bumpField("km", -0.5)}
+          onPlus={() => bumpField("km", 0.5)}
         />
 
-        {mode === "advanced" && (
-          <>
-            <label className="flex items-center justify-between rounded-xl border border-border p-3 text-base">
-              <span className="font-semibold">שעת עומס</span>
-              <input type="checkbox" className="h-5 w-5" checked={value.isPeakHour} onChange={setBool("isPeakHour")} />
-            </label>
+        <FieldRow
+          label="זמן משוער בדקות"
+          optional
+          inputId="minutes"
+          inputRef={minutesRef}
+          fieldValue={text.minutes}
+          inputMode="numeric"
+          onValueChange={(v) => {
+            const next = { ...text, minutes: v };
+            setText(next);
+            emit(next);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              focusNext("minutes");
+            }
+          }}
+          onMinus={() => bumpField("minutes", -5)}
+          onPlus={() => bumpField("minutes", 5)}
+        />
 
-            <label className="flex items-center justify-between rounded-xl border border-border p-3 text-base">
-              <span className="font-semibold">יעד באזור חם</span>
-              <input type="checkbox" className="h-5 w-5" checked={value.inHotZone} onChange={setBool("inHotZone")} />
-            </label>
+        <FieldRow
+          label="טיפ מזומן"
+          optional
+          inputId="tip"
+          inputRef={tipRef}
+          fieldValue={text.tip}
+          inputMode="numeric"
+          onValueChange={(v) => {
+            const next = { ...text, tip: v };
+            setText(next);
+            emit(next);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              focusNext("tip");
+            }
+          }}
+          onMinus={() => bumpField("tip", -5)}
+          onPlus={() => bumpField("tip", 5)}
+        />
 
-            <div>
-              <label className="label-base" htmlFor="chance">
-                סיכוי להזמנה הבאה
-              </label>
-              <select
-                id="chance"
-                value={value.nextOrderChance}
-                onChange={(e) => onChange({ ...value, nextOrderChance: e.target.value as NextOrderChance })}
-                className="input-base text-base font-medium"
-              >
-                {chanceOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </>
-        )}
+        <label className="flex min-h-[3.25rem] cursor-pointer items-center justify-between gap-3 rounded-2xl border-2 border-border px-4 py-3 text-lg font-semibold transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25">
+          <span>דאבל?</span>
+          <input
+            type="checkbox"
+            className="h-6 w-6 shrink-0 rounded border-border"
+            checked={value.isDoubleOrder}
+            onChange={setBool("isDoubleOrder")}
+          />
+        </label>
+
+        <label className="flex min-h-[3.25rem] cursor-pointer items-center justify-between gap-3 rounded-2xl border-2 border-border px-4 py-3 text-lg font-semibold transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25">
+          <span>מוציא מהאזור החם?</span>
+          <input
+            type="checkbox"
+            className="h-6 w-6 shrink-0 rounded border-border"
+            checked={value.leavesHotZone}
+            onChange={setBool("leavesHotZone")}
+          />
+        </label>
       </div>
     </section>
   );

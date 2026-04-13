@@ -9,7 +9,7 @@ export default function BackupCard({ onExport, onImport }: BackupCardProps) {
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-soft">
       <h2 className="text-lg font-bold">גיבוי ושחזור</h2>
-      <p className="mt-2 text-sm text-muted">ייצוא/ייבוא של היסטוריה והגדרות בקובץ JSON מקומי.</p>
+      <p className="mt-2 text-sm text-muted">ייצוא/ייבוא של היסטוריית הבדיקות בקובץ JSON מקומי.</p>
 
       <div className="mt-4 flex items-center gap-2">
         <button
