@@ -37,7 +37,9 @@ export type BackupPayload = {
 
 export type DailySummaryPrefs = {
   hoursWorked: number;
-  /** Meaning depends on tipsInputMode */
+  /** Full manual tip total when tipsInputMode is manual */
   cashTipsNis: number;
+  /** Added on top of tips summed from saved checks today when tipsInputMode is from_history */
+  extraCashTipsNis: number;
   tipsInputMode: "from_history" | "manual";
 };

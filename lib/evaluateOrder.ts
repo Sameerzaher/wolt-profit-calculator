@@ -14,32 +14,25 @@ import {
 } from "./decisionConstants";
 import type { CalculatorInput, DecisionKind, OrderEvaluation } from "./types";
 
-/** Hebrew UI strings (Unicode escapes keep the file encoding-safe on Windows editors) */
-const H = {
-  distanceHigh:
-    "\u05de\u05e8\u05d7\u05e7 \u05d2\u05d1\u05d5\u05d4 \u05de\u05d3\u05d9",
-  nisKmGreat:
-    "\u05d9\u05d7\u05e1 \u20aa/\u05e7\u05f4\u05de \u05de\u05e6\u05d5\u05d9\u05df",
-  nisKmGood: "\u05d9\u05d7\u05e1 \u20aa/\u05e7\u05f4\u05de \u05d8\u05d5\u05d1",
-  nisKmMid: "\u05d9\u05d7\u05e1 \u20aa/\u05e7\u05f4\u05de \u05d1\u05d9\u05e0\u05d5\u05e0\u05d9",
-  nisKmLow:
-    "\u05d9\u05d7\u05e1 \u20aa/\u05e7\u05f4\u05de \u05e0\u05de\u05d5\u05da \u05d9\u05d7\u05e1\u05d9\u05ea",
-  distanceSweet:
-    "\u05d1\u05d8\u05d5\u05d5\u05d7 2\u20135 \u05e7\u05f4\u05de \u2014 \u05d1\u05d3\u05e8\u05da \u05db\u05dc\u05dc \u05d4\u05db\u05d9 \u05e0\u05d5\u05d7",
-  doubleWorth: "\u05d3\u05d0\u05d1\u05dc \u05de\u05e9\u05ea\u05dc\u05dd",
-  leavesHot:
-    "\u05d4\u05d6\u05de\u05e0\u05d4 \u05de\u05d5\u05e6\u05d9\u05d0\u05d4 \u05d0\u05d5\u05ea\u05da \u05de\u05d4\u05d0\u05d6\u05d5\u05e8 \u05d4\u05d7\u05dd",
-  tipHelps:
-    "\u05d8\u05d9\u05e4 \u05de\u05e9\u05e4\u05e8 \u05de\u05e9\u05de\u05e2\u05d5\u05ea\u05d9\u05ea \u05d0\u05ea \u05d4\u05e8\u05d5\u05d5\u05d7",
-  hourlyLow: "\u20aa/\u05e9\u05e2\u05d4 \u05e0\u05de\u05d5\u05da \u05d9\u05d7\u05e1\u05d9\u05ea",
-  hourlyStrong: "\u20aa/\u05e9\u05e2\u05d4 \u05d7\u05d6\u05e7",
-  rejectDistance:
-    "\u05de\u05e8\u05d7\u05e7 \u05d2\u05d1\u05d5\u05d4 \u05de\u05d3\u05d9 \u2014 \u05e2\u05d3\u05d9\u05e3 \u05dc\u05d3\u05dc\u05d2",
-  fallbackReason: "\u05d4\u05d7\u05dc\u05d8\u05d4 \u05dc\u05e4\u05d9 \u05e6\u05d9\u05d5\u05df \u05db\u05d5\u05dc\u05dc",
-  decisionStrong: "\ud83d\udfe2 \u05dc\u05e7\u05d7\u05ea \u05d1\u05d7\u05d5\u05dd",
-  decisionAccept: "\u2705 \u05db\u05d3\u05d0\u05d9 \u05dc\u05e7\u05d7\u05ea",
-  decisionDepends: "\u26a0\ufe0f \u05ea\u05dc\u05d5\u05d9",
-  decisionReject: "\u274c \u05e2\u05d3\u05d9\u05e3 \u05dc\u05d3\u05dc\u05d2"
+/** מחרוזות למשתמש */
+const COPY = {
+  distanceHigh: "מרחק גבוה מדי",
+  nisKmGreat: "יחס \u20aa לק״מ מצוין",
+  nisKmGood: "יחס \u20aa לק״מ טוב",
+  nisKmMid: "יחס \u20aa לק״מ בגבול",
+  nisKmLow: "יחס \u20aa לק״מ חלש",
+  distanceSweet: "מרחק בטווח הנעים 2–5 ק״מ",
+  doubleWorth: "משלוח כפול משפר את התמורה",
+  leavesHot: "יוצא מהאזור החם",
+  tipHelps: "טיפ במזומן משפר רווחיות",
+  hourlyLow: "\u20aa לשעה חלשים",
+  hourlyStrong: "\u20aa לשעה חזקים",
+  rejectDistance: "מרחק גבוה מדי — עדיף לדלג",
+  fallbackReason: "החלטה לפי ציון כללי",
+  decisionStrong: "\ud83d\udfe2 קבלה חזקה",
+  decisionAccept: "\u2705 לקבל",
+  decisionDepends: "\u26a0\ufe0f תלוי",
+  decisionReject: "\u274c לדחות"
 } as const;
 
 const MIN_KM = 0.01;
@@ -117,47 +110,48 @@ function buildReasons(params: {
   const out: string[] = [];
 
   if (params.distanceKm > MAX_DISTANCE_REJECT_KM) {
-    out.push(H.distanceHigh);
+    out.push(COPY.distanceHigh);
   }
 
   if (params.tier === "strong") {
-    out.push(H.nisKmGreat);
+    out.push(COPY.nisKmGreat);
   } else if (params.tier === "accept") {
-    out.push(H.nisKmGood);
+    out.push(COPY.nisKmGood);
   } else if (params.tier === "depends") {
-    out.push(H.nisKmMid);
+    out.push(COPY.nisKmMid);
   } else {
-    out.push(H.nisKmLow);
+    out.push(COPY.nisKmLow);
   }
 
   if (params.distanceKm >= 2 && params.distanceKm <= 5) {
-    out.push(H.distanceSweet);
+    out.push(COPY.distanceSweet);
   }
 
   if (params.isDoubleOrder) {
-    out.push(H.doubleWorth);
+    out.push(COPY.doubleWorth);
   }
 
   if (params.leavesHotZone) {
-    out.push(H.leavesHot);
+    out.push(COPY.leavesHot);
   }
 
   if (params.tipBoost > 0) {
-    out.push(H.tipHelps);
+    out.push(COPY.tipHelps);
   }
 
   if (params.lowHourly) {
-    out.push(H.hourlyLow);
+    out.push(COPY.hourlyLow);
   } else if (params.nisPerHour !== null && params.nisPerHour >= 85) {
-    out.push(H.hourlyStrong);
+    out.push(COPY.hourlyStrong);
   }
 
   return out;
 }
 
 /**
- * Core courier decision: NIS/km, optional NIS/hour, distance, tip, double, and hot-zone exit.
- * Safe for empty tip / missing minutes — avoids NaN and division by zero.
+ * Courier decision engine: weighted score from NIS/km, NIS/hour (if time known),
+ * distance band, tips, double bonus, hot-zone exit, weak hourly penalty.
+ * Hard-rejects distance > MAX_DISTANCE_REJECT_KM. Guards NaN / divide-by-zero.
  */
 export function evaluateCourierOrder(input: CalculatorInput): OrderEvaluation {
   const price = Math.max(0, Number.isFinite(input.price) ? input.price : 0);
@@ -216,8 +210,8 @@ export function evaluateCourierOrder(input: CalculatorInput): OrderEvaluation {
 
   const reason =
     distanceKm > MAX_DISTANCE_REJECT_KM
-      ? H.rejectDistance
-      : reasons.slice(0, 2).join(" \u00b7 ") || H.fallbackReason;
+      ? COPY.rejectDistance
+      : reasons.slice(0, 2).join(" \u00b7 ") || COPY.fallbackReason;
 
   return {
     nisPerKm,
@@ -229,20 +223,23 @@ export function evaluateCourierOrder(input: CalculatorInput): OrderEvaluation {
   };
 }
 
-export function decisionLabelHebrew(d: DecisionKind): string {
+export function decisionLabel(d: DecisionKind): string {
   switch (d) {
     case "strong_accept":
-      return H.decisionStrong;
+      return COPY.decisionStrong;
     case "accept":
-      return H.decisionAccept;
+      return COPY.decisionAccept;
     case "depends":
-      return H.decisionDepends;
+      return COPY.decisionDepends;
     default:
-      return H.decisionReject;
+      return COPY.decisionReject;
   }
 }
 
+/** @deprecated Use decisionLabel */
+export const decisionLabelHebrew = decisionLabel;
+
 export function formatNisPerHour(n: number | null): string {
-  if (n === null) return "\u2014";
+  if (n === null) return "—";
   return `${round1(n)} \u20aa/\u05e9\u05e2\u05d4`;
 }

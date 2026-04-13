@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Wolt Delivery Calculator",
-  description: "Personal mobile-first utility for Wolt delivery decisions",
+  title: "עוזר החלטות — משלוחי Wolt",
+  description: "כלי מהיר לקבלת החלטות על הצעות משלוח — מובייל בלבד, בלי שרת",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/icon.svg",
@@ -12,12 +12,12 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Wolt Calc"
+    title: "Wolt עוזר"
   }
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0c12"
+  themeColor: "#0f172a"
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="he" dir="rtl" suppressHydrationWarning>
-      <body>{children}</body>
+      <body className="font-sans">{children}</body>
     </html>
   );
 }

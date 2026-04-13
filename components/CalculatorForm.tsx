@@ -51,16 +51,16 @@ function tryCommit(
     const v = validateCalculatorInput(partial);
     return {
       ok: false,
-      issues: v.length ? v : ["מלא מחיר ומרחק."]
+      issues: v.length ? v : ["הזינו מחיר ומרחק."]
     };
   }
 
   if (!minutesEmpty && (minutesParsed === null || minutesParsed <= 0)) {
-    return { ok: false, issues: ["הזן זמן משוער בדקות תקין, או השאר ריק."] };
+    return { ok: false, issues: ["הזינו דקות תקינות, או השאירו ריק."] };
   }
 
   if (tipRaw === null) {
-    return { ok: false, issues: ["הזן טיפ מזומן תקין (או 0)."] };
+    return { ok: false, issues: ["הזינו טיפ במזומן תקין (או 0)."] };
   }
 
   const next: CalculatorInput = {
@@ -88,7 +88,8 @@ function FieldRow({
   onMinus,
   onPlus,
   onPlusExtra,
-  optional
+  optional,
+  enterKeyHint = "next"
 }: {
   label: string;
   inputId: string;
@@ -101,12 +102,13 @@ function FieldRow({
   onPlus: () => void;
   onPlusExtra?: () => void;
   optional?: boolean;
+  enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send";
 }) {
   return (
     <div>
       <label className="label-base" htmlFor={inputId}>
         {label}
-        {optional && <span className="mr-1 text-sm font-normal text-muted">(רשות)</span>}
+        {optional && <span className="ms-1 text-sm font-normal text-muted">(אופציונלי)</span>}
       </label>
       <div className="flex gap-2">
         <input
@@ -115,22 +117,22 @@ function FieldRow({
           type="text"
           inputMode={inputMode}
           autoComplete="off"
-          enterKeyHint="next"
+          enterKeyHint={enterKeyHint}
           className="input-base min-w-0 flex-1 font-semibold tabular-nums"
           value={fieldValue}
           onChange={(e) => onValueChange(e.target.value)}
           onKeyDown={onKeyDown}
         />
         <div className="flex shrink-0 flex-col justify-center">
-          <div className="flex gap-1">
-            <button type="button" className="step-btn" onClick={onMinus} aria-label="הפחת">
+          <div className="flex gap-1.5">
+            <button type="button" className="step-btn" onClick={onMinus} aria-label="הקטן">
               −
             </button>
-            <button type="button" className="step-btn" onClick={onPlus} aria-label="הוסף">
+            <button type="button" className="step-btn" onClick={onPlus} aria-label="הגדל">
               +
             </button>
             {onPlusExtra && (
-              <button type="button" className="step-btn min-w-[2.75rem] px-2 text-sm" onClick={onPlusExtra} aria-label="הוסף 10">
+              <button type="button" className="step-btn min-w-[3.5rem] px-2 text-base font-black" onClick={onPlusExtra} aria-label="הוסף 10">
                 +10
               </button>
             )}
@@ -219,6 +221,14 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
     emit(nextText);
   };
 
+  const KM_PRESETS = [3, 3.5, 4, 5] as const;
+
+  const applyKmPreset = (km: number) => {
+    const nextText = { ...text, km: String(km) };
+    setText(nextText);
+    emit(nextText);
+  };
+
   const setBool = (key: "isDoubleOrder" | "leavesHotZone") => (e: ChangeEvent<HTMLInputElement>) => {
     const nextFlags = { ...flags, [key]: e.target.checked };
     const res = tryCommit(text, nextFlags);
@@ -231,14 +241,16 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
   };
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-bold">בדוק הזמנה</h2>
+    <section className="card-panel ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
+      <div className="mb-4 flex items-baseline justify-between gap-2">
+        <h2 className="text-xl font-black text-text">בדיקה מהירה</h2>
+        <span className="text-xs font-bold uppercase tracking-wide text-primary">חי</span>
       </div>
 
-      <div className="space-y-5">
+      {/* Tighter stack for the two fields you type most */}
+      <div className="space-y-4">
         <FieldRow
-          label="מחיר"
+          label="מחיר (\u20aa)"
           inputId="price"
           inputRef={priceRef}
           fieldValue={text.price}
@@ -260,7 +272,7 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
         />
 
         <FieldRow
-          label={"\u05de\u05e8\u05d7\u05e7 \u05d1\u05e7\u05f4\u05de"}
+          label="מרחק (ק״מ)"
           inputId="km"
           inputRef={kmRef}
           fieldValue={text.km}
@@ -279,9 +291,24 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
           onMinus={() => bumpField("km", -0.5)}
           onPlus={() => bumpField("km", 0.5)}
         />
+        <div className="flex flex-wrap gap-2 pt-1">
+          <span className="w-full text-xs font-bold uppercase tracking-wide text-text/70">קיצורי ק״מ</span>
+          {KM_PRESETS.map((km) => (
+            <button
+              key={km}
+              type="button"
+              onClick={() => applyKmPreset(km)}
+              className="min-h-[2.75rem] min-w-[3.25rem] rounded-xl border-2 border-border bg-accent/60 px-3 text-base font-black tabular-nums text-text transition active:scale-95 dark:bg-white/10"
+            >
+              {km}
+            </button>
+          ))}
+        </div>
+      </div>
 
+      <div className="mt-5 space-y-4 border-t border-border pt-5">
         <FieldRow
-          label="זמן משוער בדקות"
+          label="זמן משוער (דק׳)"
           optional
           inputId="minutes"
           inputRef={minutesRef}
@@ -303,7 +330,7 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
         />
 
         <FieldRow
-          label="טיפ מזומן"
+          label="טיפ במזומן"
           optional
           inputId="tip"
           inputRef={tipRef}
@@ -314,6 +341,7 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
             setText(next);
             emit(next);
           }}
+          enterKeyHint="done"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -324,21 +352,21 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
           onPlus={() => bumpField("tip", 5)}
         />
 
-        <label className="flex min-h-[3.25rem] cursor-pointer items-center justify-between gap-3 rounded-2xl border-2 border-border px-4 py-3 text-lg font-semibold transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25">
-          <span>דאבל?</span>
+        <label className="flex min-h-[3.5rem] cursor-pointer items-center justify-between gap-4 rounded-2xl border-2 border-border bg-accent/20 px-4 py-3.5 text-base font-semibold transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 dark:bg-white/[0.04]">
+          <span className="leading-snug">משלוח כפול?</span>
           <input
             type="checkbox"
-            className="h-6 w-6 shrink-0 rounded border-border"
+            className="h-6 w-6 shrink-0 rounded-md border-border text-primary focus:ring-primary"
             checked={value.isDoubleOrder}
             onChange={setBool("isDoubleOrder")}
           />
         </label>
 
-        <label className="flex min-h-[3.25rem] cursor-pointer items-center justify-between gap-3 rounded-2xl border-2 border-border px-4 py-3 text-lg font-semibold transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25">
-          <span>מוציא מהאזור החם?</span>
+        <label className="flex min-h-[3.5rem] cursor-pointer items-center justify-between gap-4 rounded-2xl border-2 border-border bg-accent/20 px-4 py-3.5 text-base font-semibold transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 dark:bg-white/[0.04]">
+          <span className="leading-snug">יוצא מהאזור החם?</span>
           <input
             type="checkbox"
-            className="h-6 w-6 shrink-0 rounded border-border"
+            className="h-6 w-6 shrink-0 rounded-md border-border text-primary focus:ring-primary"
             checked={value.leavesHotZone}
             onChange={setBool("leavesHotZone")}
           />

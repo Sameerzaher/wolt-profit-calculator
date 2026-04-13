@@ -7,20 +7,22 @@ type BackupCardProps = {
 
 export default function BackupCard({ onExport, onImport }: BackupCardProps) {
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-      <h2 className="text-lg font-bold">גיבוי ושחזור</h2>
-      <p className="mt-2 text-sm text-muted">ייצוא/ייבוא של היסטוריית הבדיקות בקובץ JSON מקומי.</p>
+    <section className="card-panel ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
+      <h2 className="text-lg font-bold text-text">גיבוי</h2>
+      <p className="mt-2 text-sm leading-relaxed text-muted">
+        ייצוא או ייבוא של הבדיקות השמורות כקובץ JSON מקומי.
+      </p>
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={onExport}
-          className="rounded-lg border border-border px-3 py-2 text-sm transition hover:text-text"
+          className="min-h-[2.75rem] rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold shadow-sm transition hover:border-muted active:scale-[0.98] dark:bg-card/80"
         >
-          ייצוא גיבוי
+          ייצוא
         </button>
-        <label className="rounded-lg border border-border px-3 py-2 text-sm transition hover:text-text">
-          ייבוא גיבוי
+        <label className="inline-flex min-h-[2.75rem] cursor-pointer items-center rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold shadow-sm transition hover:border-muted active:scale-[0.98] dark:bg-card/80">
+          ייבוא
           <input
             type="file"
             accept="application/json"

@@ -47,6 +47,7 @@ export default function HomePage() {
   const [dailyPrefs, setDailyPrefs] = useState<DailySummaryPrefs>({
     hoursWorked: 0,
     cashTipsNis: 0,
+    extraCashTipsNis: 0,
     tipsInputMode: "from_history"
   });
   const [filter, setFilter] = useState<HistoryFilter>("today");
@@ -101,11 +102,11 @@ export default function HomePage() {
 
   const handleSave = () => {
     if (inputIssues.length > 0) {
-      window.alert("יש לתקן את השדות לפני שמירה.");
+      window.alert("תקנו את השדות לפני השמירה.");
       return;
     }
     if (!result) {
-      window.alert("לא ניתן לשמור — אין חישוב תקף.");
+      window.alert("אין מה לשמור — הקלט לא תקין.");
       return;
     }
 
@@ -134,7 +135,7 @@ export default function HomePage() {
   };
 
   const handleClearAll = () => {
-    const confirmed = window.confirm("למחוק את כל ההיסטוריה? לא ניתן לבטל פעולה זו.");
+    const confirmed = window.confirm("למחוק את כל הבדיקות השמורות? לא ניתן לבטל.");
     if (!confirmed) return;
     setDeliveries(clearAllDeliveries());
   };
@@ -189,7 +190,7 @@ export default function HomePage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      window.alert("ייצוא הנתונים נכשל.");
+      window.alert("ייצוא נכשל.");
     }
   };
 
@@ -211,9 +212,7 @@ export default function HomePage() {
 
     const hasData = deliveries.length > 0;
     if (hasData) {
-      const ok = window.confirm(
-        "\u05d4\u05d9\u05d9\u05d1\u05d5\u05d0 \u05d9\u05d7\u05dc\u05d9\u05e3 \u05d0\u05ea \u05d4\u05d4\u05d9\u05e1\u05d8\u05d5\u05e8\u05d9\u05d4 \u05d1\u05de\u05db\u05e9\u05d9\u05e8. \u05dc\u05d4\u05de\u05e9\u05d9\u05da?"
-      );
+      const ok = window.confirm("הייבוא יחליף את הבדיקות השמורות במכשיר. להמשיך?");
       if (!ok) return;
     }
 
@@ -226,32 +225,37 @@ export default function HomePage() {
       setInputIssues([]);
       window.alert("הגיבוי יובא בהצלחה.");
     } catch {
-      window.alert("שגיאה בשמירת הנתונים לאחר הייבוא.");
+      window.alert("לא ניתן לשמור נתונים אחרי הייבוא.");
     }
   };
 
   return (
-    <main className="mx-auto max-w-md space-y-4 px-4 pb-40 pt-4">
-      <header className="mb-2 flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-black leading-tight">Courier Decision Assistant</h1>
-          <p className="mt-1 text-base text-muted">החלטה מהירה על משלוח — מותאם לנייד</p>
+    <main className="mx-auto min-h-screen max-w-lg space-y-6 px-safe pb-44 pt-4 pt-safe sm:space-y-5">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">שליח/ה</p>
+          <h1 className="mt-0.5 text-2xl font-black leading-tight tracking-tight text-text sm:text-[1.65rem]">
+            עוזר החלטות
+          </h1>
+          <p className="mt-2 text-sm leading-snug text-muted sm:text-base">
+            קבלה או דילוג מהיר בטלפון — מחיר, מרחק, זמן וטיפים.
+          </p>
         </div>
-        <ThemeToggle isDark={isDark} onToggle={toggleTheme} />
+        <div className="shrink-0 sm:pt-1">
+          <ThemeToggle isDark={isDark} onToggle={toggleTheme} />
+        </div>
       </header>
 
       <InstallHint />
 
       {editingId && editingCreatedAt && (
-        <section className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-base font-semibold">
-          {"\u05de\u05e6\u05d1 \u05e2\u05e8\u05d9\u05db\u05d4: \u05d1\u05d3\u05d9\u05e7\u05d4 \u05de\u2014 "}
-          {formatDateTime(editingCreatedAt)}
+        <section className="rounded-xl border border-amber-400/50 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100">
+          עורכים בדיקה מ־<span className="tabular-nums">{formatDateTime(editingCreatedAt)}</span>
         </section>
       )}
 
       <CalculatorForm value={input} onChange={setInput} onValidityChange={setInputIssues} />
       <ResultCard result={result} inputIssues={inputIssues} />
-      <DailySummary deliveries={deliveries} prefs={dailyPrefs} onPrefsChange={setDailyPrefs} />
       <HistoryList
         deliveries={deliveries}
         filter={filter}
@@ -261,48 +265,53 @@ export default function HomePage() {
         onDelete={handleDelete}
         onClearAll={handleClearAll}
       />
+      <DailySummary deliveries={deliveries} prefs={dailyPrefs} onPrefsChange={setDailyPrefs} />
       <BackupCard onExport={handleExportBackup} onImport={handleImportBackup} />
 
-      <div className="fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-md border-t border-border bg-bg/95 p-3 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.08)] backdrop-blur-md dark:shadow-[0_-4px_24px_rgba(0,0,0,0.4)]">
-        {editingId && (
-          <button
-            type="button"
-            onClick={resetFormToDefaults}
-            className="mb-2 w-full rounded-xl border border-border px-4 py-3 text-base font-medium"
-          >
-            בטל עריכה
-          </button>
-        )}
+      <div className="fixed bottom-0 left-0 right-0 z-20 px-safe">
+        <div className="mx-auto max-w-lg rounded-t-3xl border border-b-0 border-border bg-card/92 shadow-dock backdrop-blur-xl dark:border-slate-600/60 dark:bg-card/95 dark:shadow-[0_-12px_40px_rgba(0,0,0,0.5)]">
+          <div className="px-4 pb-safe pt-4">
+            {editingId && (
+              <button
+                type="button"
+                onClick={resetFormToDefaults}
+                className="mb-3 w-full rounded-xl border border-border bg-accent/50 py-3.5 text-base font-semibold text-text transition active:scale-[0.99] dark:bg-white/5"
+              >
+                ביטול עריכה
+              </button>
+            )}
 
-        <div className="mb-3 flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              hapticLight();
-              resetFormToDefaults();
-            }}
-            className="w-[36%] rounded-xl border-2 border-border py-4 text-base font-bold"
-          >
-            נקה
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="w-[64%] rounded-xl bg-primary py-4 text-lg font-extrabold text-white shadow-lg shadow-primary/25 transition active:scale-[0.99]"
-          >
-            {editingId ? "עדכן בדיקה" : "שמור בדיקה"}
-          </button>
+            <div className="mb-3 flex gap-3">
+              <button
+                type="button"
+                onClick={handleSave}
+                className="min-h-[3.5rem] flex-1 rounded-xl bg-primary py-3.5 text-lg font-black text-white shadow-md shadow-primary/30 transition active:scale-[0.99] active:shadow-sm"
+              >
+                {editingId ? "עדכן בדיקה" : "שמור בדיקה"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  hapticLight();
+                  resetFormToDefaults();
+                }}
+                className="min-h-[3.5rem] w-[34%] rounded-xl border-2 border-border bg-card py-3.5 text-base font-black shadow-sm transition active:scale-[0.99] dark:bg-card/80"
+              >
+                איפוס
+              </button>
+            </div>
+
+            <label className="flex min-h-[3rem] cursor-pointer items-center gap-3 rounded-xl py-1.5 text-base font-semibold text-text">
+              <input
+                type="checkbox"
+                className="h-6 w-6 shrink-0 rounded border-2 border-border text-primary focus:ring-2 focus:ring-primary/30"
+                checked={keepLastAfterSave}
+                onChange={(e) => setKeepLastPreference(e.target.checked)}
+              />
+              להשאיר ערכים אחרי שמירה
+            </label>
+          </div>
         </div>
-
-        <label className="flex cursor-pointer items-center gap-3 text-base font-medium text-text">
-          <input
-            type="checkbox"
-            className="h-5 w-5 rounded border-border"
-            checked={keepLastAfterSave}
-            onChange={(e) => setKeepLastPreference(e.target.checked)}
-          />
-          להשאיר ערכים אחרי שמירה
-        </label>
       </div>
     </main>
   );

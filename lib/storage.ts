@@ -101,6 +101,7 @@ export function saveTheme(theme: "light" | "dark"): void {
 const defaultDailyPrefs: DailySummaryPrefs = {
   hoursWorked: 0,
   cashTipsNis: 0,
+  extraCashTipsNis: 0,
   tipsInputMode: "from_history"
 };
 

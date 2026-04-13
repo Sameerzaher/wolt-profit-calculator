@@ -187,9 +187,12 @@ export function validateDailyPrefs(x: unknown): DailySummaryPrefs | null {
   if (!isFiniteNumber(x.hoursWorked) || x.hoursWorked < 0) return null;
   if (!isFiniteNumber(x.cashTipsNis) || x.cashTipsNis < 0) return null;
   if (x.tipsInputMode !== "from_history" && x.tipsInputMode !== "manual") return null;
+  const extraCashTipsNis =
+    isFiniteNumber(x.extraCashTipsNis) && x.extraCashTipsNis >= 0 ? x.extraCashTipsNis : 0;
   return {
     hoursWorked: x.hoursWorked,
     cashTipsNis: x.cashTipsNis,
+    extraCashTipsNis,
     tipsInputMode: x.tipsInputMode
   };
 }
