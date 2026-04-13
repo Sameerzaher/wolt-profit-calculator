@@ -1,17 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import BackupCard from "@/components/BackupCard";
-import CalculatorForm from "@/components/CalculatorForm";
 import DailySummary from "@/components/DailySummary";
 import HistoryList from "@/components/HistoryList";
 import InstallHint from "@/components/InstallHint";
+import OrderForm from "@/components/OrderForm";
 import ResultCard from "@/components/ResultCard";
 import ThemeToggle from "@/components/ThemeToggle";
 import { formatDateTime } from "@/lib/date";
 import { hapticLight } from "@/lib/haptics";
 import { parseBackupFile } from "@/lib/backup";
-import { evaluateCourierOrder } from "@/lib/evaluateOrder";
 import {
   addDelivery,
   applyValidatedBackup,
@@ -25,7 +24,8 @@ import {
   saveTheme,
   updateDeliveryById
 } from "@/lib/storage";
-import type { CalculatorInput, DailySummaryPrefs, SavedDelivery } from "@/lib/types";
+import type { CalculatorInput, DailySummaryPrefs, OrderEvaluation, SavedDelivery } from "@/lib/types";
+import { analyzeOrder } from "@/utils/analyzeOrder";
 
 const KEEP_LAST_KEY = "wolt_keep_last_after_save_v1";
 
@@ -43,6 +43,8 @@ const defaultInput: CalculatorInput = {
 export default function HomePage() {
   const [input, setInput] = useState<CalculatorInput>(defaultInput);
   const [inputIssues, setInputIssues] = useState<string[]>([]);
+  const [analysisResult, setAnalysisResult] = useState<OrderEvaluation | null>(null);
+  const [pulseKey, setPulseKey] = useState(0);
   const [deliveries, setDeliveries] = useState<SavedDelivery[]>([]);
   const [dailyPrefs, setDailyPrefs] = useState<DailySummaryPrefs>({
     hoursWorked: 0,
@@ -79,10 +81,22 @@ export default function HomePage() {
     };
   }, [dailyPrefs]);
 
-  const result = useMemo(() => {
-    if (inputIssues.length > 0) return null;
-    return evaluateCourierOrder(input);
-  }, [input, inputIssues]);
+  const handleOrderChange = useCallback((next: CalculatorInput) => {
+    setInput(next);
+    setAnalysisResult(null);
+  }, []);
+
+  const handleValidityChange = useCallback((issues: string[]) => {
+    setInputIssues(issues);
+    if (issues.length > 0) setAnalysisResult(null);
+  }, []);
+
+  const handleAnalyze = useCallback((valid: CalculatorInput) => {
+    setInput(valid);
+    setAnalysisResult(analyzeOrder(valid));
+    setPulseKey((k) => k + 1);
+    hapticLight();
+  }, []);
 
   const setKeepLastPreference = useCallback((next: boolean) => {
     setKeepLastAfterSave(next);
@@ -98,6 +112,7 @@ export default function HomePage() {
     setEditingCreatedAt(null);
     setInput(defaultInput);
     setInputIssues([]);
+    setAnalysisResult(null);
   }, []);
 
   const handleSave = () => {
@@ -105,8 +120,8 @@ export default function HomePage() {
       window.alert("תקנו את השדות לפני השמירה.");
       return;
     }
-    if (!result) {
-      window.alert("אין מה לשמור — הקלט לא תקין.");
+    if (!analysisResult) {
+      window.alert("לחצו קודם על ״נתח הזמנה״ כדי לקבל המלצה.");
       return;
     }
 
@@ -114,7 +129,7 @@ export default function HomePage() {
 
     const baseEntry: SavedDelivery = {
       ...input,
-      ...result,
+      ...analysisResult,
       id: editingId ?? crypto.randomUUID(),
       createdAt: editingCreatedAt ?? new Date().toISOString()
     };
@@ -126,6 +141,7 @@ export default function HomePage() {
 
     if (!keepLastAfterSave) {
       setInput(defaultInput);
+      setAnalysisResult(null);
     }
     setInputIssues([]);
   };
@@ -157,6 +173,15 @@ export default function HomePage() {
       leavesHotZone: delivery.leavesHotZone
     });
     setInputIssues([]);
+    setAnalysisResult({
+      nisPerKm: delivery.nisPerKm,
+      nisPerHour: delivery.nisPerHour,
+      score: delivery.score,
+      decision: delivery.decision,
+      reason: delivery.reason,
+      reasons: delivery.reasons
+    });
+    setPulseKey((k) => k + 1);
     setEditingId(delivery.id);
     setEditingCreatedAt(delivery.createdAt);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -165,17 +190,20 @@ export default function HomePage() {
   const duplicateLast = useCallback(() => {
     const latest = deliveries[0];
     if (!latest) return;
-    setInput({
+    const next: CalculatorInput = {
       price: latest.price,
       distanceKm: latest.distanceKm,
       estimatedMinutes: latest.estimatedMinutes,
       cashTip: latest.cashTip,
       isDoubleOrder: latest.isDoubleOrder,
       leavesHotZone: latest.leavesHotZone
-    });
+    };
+    setInput(next);
     setInputIssues([]);
     setEditingId(null);
     setEditingCreatedAt(null);
+    setAnalysisResult(analyzeOrder(next));
+    setPulseKey((k) => k + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [deliveries]);
 
@@ -223,6 +251,7 @@ export default function HomePage() {
       setEditingCreatedAt(null);
       setInput(defaultInput);
       setInputIssues([]);
+      setAnalysisResult(null);
       window.alert("הגיבוי יובא בהצלחה.");
     } catch {
       window.alert("לא ניתן לשמור נתונים אחרי הייבוא.");
@@ -238,7 +267,7 @@ export default function HomePage() {
             עוזר החלטות
           </h1>
           <p className="mt-2 text-sm leading-snug text-muted sm:text-base">
-            קבלה או דילוג מהיר בטלפון — מחיר, מרחק, זמן וטיפים.
+            ניתוח מיידי לפי כללים — ציון, המלצה וסיבות. מותאם לשטח.
           </p>
         </div>
         <div className="shrink-0 sm:pt-1">
@@ -254,8 +283,17 @@ export default function HomePage() {
         </section>
       )}
 
-      <CalculatorForm value={input} onChange={setInput} onValidityChange={setInputIssues} />
-      <ResultCard result={result} inputIssues={inputIssues} />
+      <OrderForm
+        value={input}
+        onChange={handleOrderChange}
+        onValidityChange={handleValidityChange}
+        onAnalyze={handleAnalyze}
+      />
+
+      <div className="sticky z-[15] space-y-4 top-[max(0.5rem,env(safe-area-inset-top))]">
+        <ResultCard result={analysisResult} inputIssues={inputIssues} pulseKey={pulseKey} />
+      </div>
+
       <HistoryList
         deliveries={deliveries}
         filter={filter}

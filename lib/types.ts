@@ -1,14 +1,8 @@
+import type { OrderInput } from "@/types/order";
+
 export type DecisionKind = "strong_accept" | "accept" | "depends" | "reject";
 
-export type CalculatorInput = {
-  price: number;
-  distanceKm: number;
-  /** When null, NIS/hour is not computed and hourly rules stay neutral */
-  estimatedMinutes: number | null;
-  cashTip: number;
-  isDoubleOrder: boolean;
-  leavesHotZone: boolean;
-};
+export type CalculatorInput = OrderInput;
 
 export type OrderEvaluation = {
   nisPerKm: number;

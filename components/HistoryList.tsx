@@ -1,6 +1,6 @@
 "use client";
 
-import { decisionLabel } from "@/lib/evaluateOrder";
+import { decisionLabel } from "@/utils/analyzeOrder";
 import { formatDateTime, isToday } from "@/lib/date";
 import type { DecisionKind, SavedDelivery } from "@/lib/types";
 

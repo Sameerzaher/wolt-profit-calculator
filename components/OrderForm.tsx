@@ -5,10 +5,12 @@ import { useEffect, useRef, useState } from "react";
 import type { CalculatorInput } from "@/lib/types";
 import { parseIntLoose, parseMoney, validateCalculatorInput } from "@/lib/inputValidation";
 
-type CalculatorFormProps = {
+type OrderFormProps = {
   value: CalculatorInput;
   onChange: (next: CalculatorInput) => void;
   onValidityChange: (issues: string[]) => void;
+  /** אחרי לחיצה על ״נתח הזמנה״ — רק כשהקלט תקין */
+  onAnalyze: (valid: CalculatorInput) => void;
 };
 
 function clampPrice(n: number): number {
@@ -118,7 +120,7 @@ function FieldRow({
           inputMode={inputMode}
           autoComplete="off"
           enterKeyHint={enterKeyHint}
-          className="input-base min-w-0 flex-1 font-semibold tabular-nums"
+          className="input-base min-h-[3.5rem] min-w-0 flex-1 text-2xl font-bold tabular-nums sm:text-xl"
           value={fieldValue}
           onChange={(e) => onValueChange(e.target.value)}
           onKeyDown={onKeyDown}
@@ -143,7 +145,7 @@ function FieldRow({
   );
 }
 
-export default function CalculatorForm({ value, onChange, onValidityChange }: CalculatorFormProps) {
+export default function OrderForm({ value, onChange, onValidityChange, onAnalyze }: OrderFormProps) {
   const [text, setText] = useState<Fields>({
     price: String(value.price),
     km: String(value.distanceKm),
@@ -183,6 +185,17 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
     if (res.ok) {
       onValidityChange([]);
       onChange(res.next);
+    } else {
+      onValidityChange(res.issues);
+    }
+  };
+
+  const runAnalyze = () => {
+    const res = tryCommit(text, flags);
+    if (res.ok) {
+      onValidityChange([]);
+      onChange(res.next);
+      onAnalyze(res.next);
     } else {
       onValidityChange(res.issues);
     }
@@ -242,12 +255,11 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
 
   return (
     <section className="card-panel ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
-      <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h2 className="text-xl font-black text-text">בדיקה מהירה</h2>
-        <span className="text-xs font-bold uppercase tracking-wide text-primary">חי</span>
+      <div className="mb-4">
+        <h2 className="text-xl font-black text-text">פרטי הזמנה</h2>
+        <p className="mt-1 text-sm font-medium text-muted">מלאו שדות ולחצו לניתוח מיידי — בלי המתנה.</p>
       </div>
 
-      {/* Tighter stack for the two fields you type most */}
       <div className="space-y-4">
         <FieldRow
           label="מחיר (\u20aa)"
@@ -345,7 +357,7 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              focusNext("tip");
+              runAnalyze();
             }
           }}
           onMinus={() => bumpField("tip", -5)}
@@ -371,6 +383,14 @@ export default function CalculatorForm({ value, onChange, onValidityChange }: Ca
             onChange={setBool("leavesHotZone")}
           />
         </label>
+
+        <button
+          type="button"
+          onClick={runAnalyze}
+          className="w-full min-h-[3.75rem] rounded-2xl bg-primary py-4 text-xl font-black text-white shadow-lg shadow-primary/35 transition active:scale-[0.99] active:shadow-md"
+        >
+          נתח הזמנה
+        </button>
       </div>
     </section>
   );

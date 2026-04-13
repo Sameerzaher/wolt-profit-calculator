@@ -1,4 +1,4 @@
-import { evaluateCourierOrder } from "./evaluateOrder";
+import { analyzeOrder } from "@/utils/analyzeOrder";
 import type { BackupPayload, CalculatorInput, DailySummaryPrefs, SavedDelivery, DecisionKind } from "./types";
 import { BACKUP_SCHEMA_VERSION, BACKUP_SCHEMA_VERSION_V1 } from "./constants";
 
@@ -104,7 +104,7 @@ function validateLegacyDelivery(x: unknown): SavedDelivery | null {
 
   return {
     ...input,
-    ...evaluateCourierOrder(input),
+    ...analyzeOrder(input),
     id: x.id,
     createdAt: x.createdAt
   };

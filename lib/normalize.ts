@@ -1,4 +1,4 @@
-import { evaluateCourierOrder } from "./evaluateOrder";
+import { analyzeOrder } from "@/utils/analyzeOrder";
 import type { CalculatorInput, DecisionKind, SavedDelivery } from "./types";
 
 const DECISIONS: DecisionKind[] = ["strong_accept", "accept", "depends", "reject"];
@@ -48,7 +48,7 @@ export function normalizeSavedDelivery(raw: unknown): SavedDelivery | null {
       leavesHotZone
     };
 
-    const computed = evaluateCourierOrder(input);
+    const computed = analyzeOrder(input);
 
     const nisPerKm = Number.isFinite(Number(raw.nisPerKm)) ? Number(raw.nisPerKm) : computed.nisPerKm;
     const nisPerHourRaw = raw.nisPerHour;
@@ -94,7 +94,7 @@ export function normalizeSavedDelivery(raw: unknown): SavedDelivery | null {
 
   return {
     ...input,
-    ...evaluateCourierOrder(input),
+    ...analyzeOrder(input),
     id: raw.id,
     createdAt: raw.createdAt
   };
