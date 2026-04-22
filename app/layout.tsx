@@ -1,33 +1,24 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
+import { AppDataProvider } from "@/components/AppDataProvider";
+import BottomNav from "@/components/BottomNav";
+import StickyShiftSummaryBar from "@/components/StickyShiftSummaryBar";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "עוזר החלטות — משלוחי Wolt",
-  description: "כלי מהיר לקבלת החלטות על הצעות משלוח — מובייל בלבד, בלי שרת",
-  manifest: "/manifest.webmanifest",
-  icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg"
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Wolt עוזר"
-  }
+  title: "WoltCalc V2",
+  description: "Cockpit חכם לשליח/ת Wolt לקבלת החלטות בזמן אמת"
 };
 
-export const viewport: Viewport = {
-  themeColor: "#0f172a"
-};
-
-export default function RootLayout({
-  children
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="he" dir="rtl" suppressHydrationWarning>
-      <body className="font-sans">{children}</body>
+    <html lang="he" dir="rtl">
+      <body className="bg-slate-950 text-slate-100">
+        <AppDataProvider>
+          <div className="mx-auto min-h-screen max-w-lg px-4 pb-44 pt-4">{children}</div>
+          <StickyShiftSummaryBar />
+          <BottomNav />
+        </AppDataProvider>
+      </body>
     </html>
   );
 }

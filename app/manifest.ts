@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "עוזר החלטות — משלוחי Wolt",
-    short_name: "Wolt עוזר",
-    description: "כלי מהיר לקבלת החלטות על הצעות משלוח",
+    name: "WoltCalc V2",
+    short_name: "WoltCalc",
+    description: "Companion cockpit for Wolt courier profitability",
     start_url: "/",
     display: "standalone",
     background_color: "#0a0c12",

@@ -2,95 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-@keyframes result-badge-pop {
-  0% {
-    transform: scale(0.96);
-    opacity: 0.88;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-:root {
-  --bg: 241 245 249;
-  --card: 255 255 255;
-  --text: 15 23 42;
-  --muted: 71 85 105;
-  --border: 203 213 225;
-  --primary: 37 99 235;
-  --primary-foreground: 255 255 255;
-  --accent: 248 250 252;
-}
-
-.dark {
-  --bg: 15 23 42;
-  --card: 30 41 59;
-  --text: 248 250 252;
-  --muted: 186 198 214;
-  --border: 51 65 85;
-  --primary: 59 130 246;
-  --primary-foreground: 255 255 255;
-  --accent: 15 23 42;
-}
-
 html {
-  font-size: 18px;
+  font-size: 17px;
   -webkit-text-size-adjust: 100%;
 }
 
-* {
-  -webkit-tap-highlight-color: transparent;
-}
-
 body {
-  background: rgb(var(--bg));
-  color: rgb(var(--text));
-  min-height: 100vh;
   min-height: 100dvh;
-  font-feature-settings: "tnum";
+  font-feature-settings: "tnum", "lnum";
+  -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  text-align: right;
 }
 
-@layer components {
-  .input-base {
-    @apply min-h-[3.25rem] w-full rounded-xl border-2 border-border bg-card px-4 py-3 text-xl font-semibold text-text shadow-sm outline-none transition;
-    @apply placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/25 dark:shadow-none;
-  }
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
 
-  .label-base {
-    @apply mb-1 block text-sm font-bold uppercase tracking-wide text-text/80;
-  }
+input,
+select,
+textarea {
+  direction: rtl;
+}
 
-  .step-btn {
-    @apply flex h-14 min-w-[3.5rem] shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card text-2xl font-bold leading-none text-text shadow-sm transition;
-    @apply active:scale-[0.97] dark:bg-card/80 dark:active:bg-card;
-  }
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
-  .card-panel {
-    @apply rounded-2xl border border-border bg-card p-4 shadow-soft sm:p-5 dark:shadow-[0_8px_30px_rgba(0,0,0,0.35)];
-  }
-
-  .segmented {
-    @apply flex rounded-xl border border-border bg-accent/80 p-1 dark:bg-black/25;
-  }
-
-  .pb-safe {
-    padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
-  }
-
-  .pt-safe {
-    padding-top: env(safe-area-inset-top);
-  }
-
-  .px-safe {
-    padding-left: max(1rem, env(safe-area-inset-left));
-    padding-right: max(1rem, env(safe-area-inset-right));
-  }
-
-  .animate-result-badge {
-    animation: result-badge-pop 0.38s ease-out;
-  }
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
