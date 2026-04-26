@@ -1,5 +1,5 @@
 import { DECISION_THRESHOLDS } from "@/lib/constants";
-import { getZoneRegion, mapTimeOfDayToPeakSlot, zoneMeta } from "@/src/data/zones";
+import { getZoneRegion, mapTimeOfDayToPeakSlot, zoneMeta } from "@/data/zones";
 import { clamp, round2 } from "@/lib/utils";
 import type { Decision, FuelSettings, QuickCheckInput, QuickCheckResult } from "@/types/models";
 
@@ -117,6 +117,8 @@ export function calculateQuickCheck(
   if (input.estimatedKm > 7 && score < 60) explanation = "מרחק גבוה ולא משתלם";
   if (isStrongDestination && input.estimatedMinutes <= 22) explanation = "יעד חזק וזמן טוב";
   if (destinationStrength === "weak" && input.offerAmount >= 30) explanation = "סכום טוב אבל יעד חלש";
+  const smartWarning =
+    input.offerAmount < 24 && (input.estimatedKm > 6 || input.estimatedMinutes > 30) ? "אזהרה: משלוח חלש" : undefined;
 
   return {
     score,
@@ -125,6 +127,7 @@ export function calculateQuickCheck(
     estimatedIlsPerHour: round2(Math.max(0, estimatedIlsPerHour)),
     estimatedNetProfit: round2(estimatedNetProfit),
     explanation,
+    smartWarning,
     isCrossRegion,
     isStrongDestination,
     isWeakDestination,

@@ -6,10 +6,10 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { href: "/", label: "בית" },
   { href: "/quick-check", label: "בדיקה" },
-  { href: "/active-delivery", label: "פעיל" },
-  { href: "/shift-stats", label: "משמרת" },
-  { href: "/zone-performance", label: "אזורים" },
-  { href: "/settings", label: "הגדרות" }
+  { href: "/active-shift", label: "משמרת" },
+  { href: "/where-to-go", label: "לאן" },
+  { href: "/insights", label: "תובנות" },
+  { href: "/history", label: "היסטוריה" }
 ];
 
 export default function BottomNav() {

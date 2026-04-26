@@ -2,18 +2,8 @@ export type PeakSlot = "morning" | "lunch" | "evening" | "night";
 export type ZoneStrength = "strong" | "medium" | "weak";
 
 export const deliveryZones = {
-  haifa: [
-    "חיפה מרכז",
-    "הדר",
-    "כרמל",
-    "נווה שאנן",
-    "מת״מ",
-    "צ׳ק פוסט",
-    "בת גלים",
-    "קרית אליעזר",
-    "מרכזית המפרץ"
-  ],
-  krayot: ["קרית אתא", "קרית מוצקין", "קרית ביאליק", "קרית ים", "קרית חיים", "BIG קריות"],
+  haifa: ["חיפה מרכז", "הדר", "כרמל", "נווה שאנן", "מת״מ", "צ׳ק פוסט", "בת גלים", "מרכזית המפרץ"],
+  krayot: ["BIG קריות", "קרית אתא", "קרית מוצקין", "קרית ביאליק", "קרית ים", "קרית חיים"],
   nearby: ["נשר", "טירת כרמל", "עכו"]
 } as const;
 
@@ -24,6 +14,8 @@ export const zoneMeta: Record<string, { strength: ZoneStrength; peak: PeakSlot[]
   הדר: { strength: "medium", peak: ["lunch"] },
   כרמל: { strength: "medium", peak: ["evening"] },
   "נווה שאנן": { strength: "medium", peak: ["night"] },
+  "בת גלים": { strength: "medium", peak: ["evening"] },
+  "מרכזית המפרץ": { strength: "medium", peak: ["lunch", "evening"] },
   "BIG קריות": { strength: "strong", peak: ["lunch", "evening"] },
   "קרית אתא": { strength: "medium", peak: ["lunch"] },
   "קרית מוצקין": { strength: "medium", peak: ["evening"] },
@@ -36,8 +28,6 @@ export const zoneMeta: Record<string, { strength: ZoneStrength; peak: PeakSlot[]
 };
 
 export type ZoneRegion = keyof typeof deliveryZones;
-export type ZoneName = keyof typeof zoneMeta;
-
 export const REGION_LABELS: Record<ZoneRegion | "other", string> = {
   haifa: "חיפה",
   krayot: "קריות",
@@ -59,7 +49,7 @@ export function getZoneRegion(zone: string): ZoneRegion | "other" {
 export function mapTimeOfDayToPeakSlot(timeOfDay: string): PeakSlot | null {
   const normalized = timeOfDay.trim().toLowerCase();
   if (normalized === "בוקר" || normalized === "morning") return "morning";
-  if (normalized === "צהריים" || normalized === "lunch" || normalized === "noon") return "lunch";
+  if (normalized === "צהריים" || normalized === "lunch") return "lunch";
   if (normalized === "ערב" || normalized === "evening") return "evening";
   if (normalized === "לילה" || normalized === "night") return "night";
   return null;

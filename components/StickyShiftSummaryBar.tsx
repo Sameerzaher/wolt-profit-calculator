@@ -11,7 +11,7 @@ export default function StickyShiftSummaryBar() {
   if (!isHydrated) return null;
 
   const stats = calculateDashboardStats(deliveries, shifts, fuelSettings, appSettings.dailyTarget);
-  const hiddenOnPaths = ["/quick-check", "/active-delivery", "/complete-delivery"];
+  const hiddenOnPaths = ["/quick-check", "/active-shift", "/complete-delivery", "/add-delivery"];
   if (hiddenOnPaths.includes(pathname)) return null;
 
   return (
@@ -28,7 +28,7 @@ export default function StickyShiftSummaryBar() {
             ₪/שעה: <span className="font-black text-sky-300">{stats.ilsPerHour.toFixed(0)}</span>
           </p>
         </div>
-        <Link href="/shift-stats" className="rounded-lg bg-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-200">
+        <Link href="/active-shift" className="rounded-lg bg-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-200">
           משמרת
         </Link>
       </div>

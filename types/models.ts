@@ -24,6 +24,7 @@ export interface QuickCheckResult {
   estimatedIlsPerHour: number;
   estimatedNetProfit: number;
   explanation: string;
+  smartWarning?: string;
   isCrossRegion: boolean;
   isStrongDestination: boolean;
   isWeakDestination: boolean;
@@ -88,4 +89,5 @@ export interface AppSettings {
   onboardingDone: boolean;
   demoMode: boolean;
   activeDeliveryId: string | null;
+  activeShiftId: string | null;
 }

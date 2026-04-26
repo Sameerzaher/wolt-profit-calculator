@@ -7,7 +7,7 @@ import ScoreBadge from "@/components/ScoreBadge";
 import ScreenHeader from "@/components/ScreenHeader";
 import ZoneChipSelector from "@/components/ZoneChipSelector";
 import { useAppData } from "@/components/AppDataProvider";
-import { REGION_LABELS, deliveryZones, getZonesByRegion, type ZoneRegion } from "@/src/data/zones";
+import { REGION_LABELS, deliveryZones, getZonesByRegion, type ZoneRegion } from "@/data/zones";
 import type { QuickCheckInput } from "@/types/models";
 
 const TIME_PRESETS = ["בוקר", "צהריים", "ערב", "לילה"];
@@ -248,8 +248,16 @@ export default function QuickCheckPage() {
             {result.decisionLabel} | ₪/שעה: {result.estimatedIlsPerHour.toFixed(1)}
           </p>
         </div>
+        <p className="mt-2 text-base font-black text-white">
+          {result.decision === "accept" ? "🟢 לקחת" : result.decision === "borderline" ? "🟡 גבולי" : "🔴 לדלג"}
+        </p>
         <p className="mt-3 text-sm text-slate-200">רווח נקי משוער: ₪{result.estimatedNetProfit.toFixed(1)}</p>
         <p className="mt-1 text-sm text-slate-300">{result.explanation}</p>
+        {result.smartWarning ? (
+          <p className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/15 px-2 py-1 text-xs font-bold text-rose-100">
+            {result.smartWarning}
+          </p>
+        ) : null}
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           {result.isStrongDestination && (
             <span className="rounded-full border border-emerald-500/50 bg-emerald-500/20 px-2 py-1 text-emerald-200">יעד חזק</span>

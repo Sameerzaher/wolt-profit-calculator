@@ -133,10 +133,10 @@ export default function SettingsPage() {
 
       <section className="grid grid-cols-2 gap-3">
         <button type="button" onClick={seedDemoData} className="h-12 rounded-xl border border-slate-700 bg-slate-900 text-sm font-bold text-white">
-          Seed Demo Data
+          טען נתוני דמו
         </button>
         <button type="button" onClick={exportData} className="h-12 rounded-xl border border-slate-700 bg-slate-900 text-sm font-bold text-white">
-          Export JSON
+          ייצוא JSON
         </button>
         <button
           type="button"
@@ -145,7 +145,7 @@ export default function SettingsPage() {
           }}
           className="col-span-2 h-12 rounded-xl bg-rose-600 text-sm font-bold text-white"
         >
-          Reset All Data
+          איפוס כל הנתונים
         </button>
       </section>
     </main>

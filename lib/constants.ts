@@ -9,17 +9,18 @@ export const STORAGE_KEYS = {
 } as const;
 
 export const DEFAULT_FUEL_SETTINGS: FuelSettings = {
-  vehicleName: "Scooter",
-  kmPerLiter: 35,
+  vehicleName: "Lexus CT200h",
+  kmPerLiter: 20,
   fuelPricePerLiter: 7.5,
-  costPerKm: 0.21
+  costPerKm: 0.38
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   dailyTarget: 500,
   onboardingDone: false,
   demoMode: false,
-  activeDeliveryId: null
+  activeDeliveryId: null,
+  activeShiftId: null
 };
 
 export const DECISION_THRESHOLDS = {

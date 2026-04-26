@@ -1,6 +1,6 @@
 import { calculateFuelCost } from "@/lib/scoring";
 import { dateKey, durationBetweenMinutes, getTodayKey, round2 } from "@/lib/utils";
-import { getZoneRegion } from "@/src/data/zones";
+import { getZoneRegion } from "@/data/zones";
 import type { Delivery, DropoffDemandQuality, FuelSettings, Shift, ZoneStats, ZoneStrength } from "@/types/models";
 
 export interface DashboardStats {
