@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import ScreenHeader from "@/components/ScreenHeader";
@@ -22,6 +22,14 @@ type OcrProgress = {
 const DEFAULT_COST_PER_KM = 0.7;
 
 export default function ScreenshotAnalyzerPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-slate-400">טוען מנתח צילומים...</p>}>
+      <ScreenshotAnalyzerContent />
+    </Suspense>
+  );
+}
+
+function ScreenshotAnalyzerContent() {
   const searchParams = useSearchParams();
   const today = getTodayDateInput();
   const initialDate = searchParams.get("date") ?? today;
@@ -37,15 +45,25 @@ export default function ScreenshotAnalyzerPage() {
   const [progress, setProgress] = useState<OcrProgress | null>(null);
   const [actualDrivenKm, setActualDrivenKm] = useState<string>("");
   const [costPerKm, setCostPerKm] = useState<string>(String(DEFAULT_COST_PER_KM));
+  const [createdAt, setCreatedAt] = useState<string>(new Date().toISOString());
 
   useEffect(() => {
     const snapshot = readShiftAnalysisByDate(shiftDate);
-    if (!snapshot) return;
+    if (!snapshot) {
+      setTasks([]);
+      setRawTexts([]);
+      setSuggestedDate(null);
+      setActualDrivenKm("");
+      setCostPerKm(String(DEFAULT_COST_PER_KM));
+      setCreatedAt(new Date().toISOString());
+      return;
+    }
     setTasks(snapshot.tasks);
     setRawTexts(snapshot.rawTexts);
     setSuggestedDate(snapshot.ocrDetectedDate ?? null);
     setActualDrivenKm(snapshot.actualDrivenKm !== undefined ? String(snapshot.actualDrivenKm) : "");
     setCostPerKm(String(snapshot.costPerKm));
+    setCreatedAt(snapshot.createdAt);
   }, [shiftDate]);
 
   useEffect(() => {
@@ -74,10 +92,10 @@ export default function ScreenshotAnalyzerPage() {
       actualDrivenKm: actualDrivenKmValue,
       costPerKm: costPerKmValue,
       analysis,
-      createdAt: new Date().toISOString(),
+      createdAt,
       updatedAt: new Date().toISOString()
     });
-  }, [analysis, actualDrivenKmValue, costPerKmValue, rawTexts, shiftDate, suggestedDate, tasks]);
+  }, [analysis, actualDrivenKmValue, costPerKmValue, createdAt, rawTexts, shiftDate, suggestedDate, tasks]);
 
   const onPickFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;

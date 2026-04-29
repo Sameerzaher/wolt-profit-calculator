@@ -72,6 +72,9 @@ export default function HomePage() {
         <Link href="/history" className="col-span-2 flex min-h-[3.1rem] items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-sm font-bold text-slate-200">
           היסטוריה
         </Link>
+        <Link href="/monthly" className="col-span-2 flex min-h-[3.1rem] items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-sm font-bold text-slate-200">
+          סיכום חודשי
+        </Link>
         <Link href="/screenshot-analyzer" className="col-span-2 flex min-h-[3.1rem] items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-sm font-bold text-emerald-200">
           ניתוח צילומי מסך
         </Link>
