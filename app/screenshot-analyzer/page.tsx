@@ -101,8 +101,8 @@ function ScreenshotAnalyzerContent() {
     const fileList = event.target.files;
     if (!fileList) return;
 
-    const nextItems: UploadItem[] = [...fileList]
-      .filter((file) => file.type.startsWith("image/"))
+    const nextItems: UploadItem[] = Array.from(fileList)
+      .filter((file) => isLikelyImageFile(file))
       .map((file) => ({
         id: crypto.randomUUID(),
         file,
@@ -216,13 +216,16 @@ function ScreenshotAnalyzerContent() {
           accept="image/*"
           multiple
           onChange={onPickFiles}
-          className="block w-full rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-slate-200"
+          className="block w-full rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-slate-200 file:ml-3 file:rounded-lg file:border-0 file:bg-emerald-500 file:px-3 file:py-2 file:text-xs file:font-bold file:text-slate-950"
         />
+        <p className="mt-2 text-xs text-slate-400">
+          {uploads.length > 0 ? `${uploads.length} תמונות נבחרו` : "לא נבחרו תמונות עדיין"}
+        </p>
 
         {uploads.length === 0 ? (
           <p className="mt-3 text-xs text-slate-400">אפשר לבחור כמה תמונות יחד, ואז להסיר מה שלא צריך.</p>
         ) : (
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2">
             {uploads.map((item) => (
               <div key={item.id} className="relative overflow-hidden rounded-lg border border-slate-700">
                 <Image src={item.previewUrl} alt={item.file.name} width={200} height={96} className="h-24 w-full object-cover" />
@@ -425,4 +428,12 @@ function getTodayDateInput(): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function isLikelyImageFile(file: File): boolean {
+  if (file.type?.startsWith("image/")) return true;
+  const lower = file.name.toLowerCase();
+  return [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"].some((ext) =>
+    lower.endsWith(ext)
+  );
 }

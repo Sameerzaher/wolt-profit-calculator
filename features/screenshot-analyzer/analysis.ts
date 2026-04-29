@@ -7,7 +7,7 @@ type ParsedRestaurant = {
   deliveriesCount: number;
 };
 
-const AMOUNT_REGEX = /(?:₪|NIS|ILS|(?:\bIS\b))?\s*([0-9]+(?:[.,][0-9]{1,2})?)\s*$/i;
+const AMOUNT_REGEX = /(?:₪|NIS|ILS|(?:\bIS\b)|[A-Za-z])?\s*([0-9]+(?:[.,][0-9]{1,2})?)\s*$/i;
 const KM_REGEX = /([0-9]+(?:[.,][0-9]+)?)\s*km/i;
 const TIME_REGEX = /\b([01]?\d|2[0-3]):([0-5]\d)\b/;
 const DATE_TEXT_REGEX = /\b([0-3]?\d)\s+([A-Za-z]{3,9})\s+(20\d{2})\b/;
@@ -56,9 +56,7 @@ export function parseTasksFromOcrText(text: string, sourceImageIndex: number): D
 
     const contextLines = lines.slice(Math.max(0, index - 4), index + 1);
     const taskOfferLine = [...contextLines].reverse().find((line) => /task offer/i.test(line));
-    const restaurantLine = [...contextLines]
-      .reverse()
-      .find((line) => line.includes("|") || /\(\d+\s*deliver/i.test(line));
+    const restaurantLine = findRestaurantLine(contextLines);
 
     const parsedRestaurant = parseRestaurantLine(restaurantLine);
     const distanceKm = taskOfferLine ? parseDistance(taskOfferLine) : undefined;
@@ -79,10 +77,38 @@ export function parseTasksFromOcrText(text: string, sourceImageIndex: number): D
   return tasks;
 }
 
+function findRestaurantLine(contextLines: string[]): string | undefined {
+  let taskOfferAt = -1;
+  for (let i = contextLines.length - 1; i >= 0; i -= 1) {
+    if (/task offer/i.test(contextLines[i])) {
+      taskOfferAt = i;
+      break;
+    }
+  }
+
+  if (taskOfferAt > 0) {
+    for (let i = taskOfferAt - 1; i >= 0; i -= 1) {
+      const candidate = contextLines[i].trim();
+      if (!candidate) continue;
+      if (/deliveries/i.test(candidate)) continue;
+      if (looksLikeAmountLine(candidate)) continue;
+      if (/task offer/i.test(candidate)) continue;
+      return candidate;
+    }
+  }
+
+  return [...contextLines]
+    .reverse()
+    .find((line) => line.includes("|") || /\(\d+\s*deliver/i.test(line));
+}
+
 function looksLikeAmountLine(line: string): boolean {
   const cleaned = line.trim();
   if (!cleaned) return false;
-  if (/[a-z]/i.test(cleaned) && !/(₪|NIS|ILS|IS)/i.test(cleaned)) return false;
+  if (/task offer/i.test(cleaned)) {
+    return /([0-9]+(?:[.,][0-9]{1,2})?)\s*$/.test(cleaned);
+  }
+  if (/[a-z]/i.test(cleaned) && !/(₪|NIS|ILS|IS|[A-Za-z][0-9])/i.test(cleaned)) return false;
   return /([0-9]+(?:[.,][0-9]{1,2})?)\s*$/.test(cleaned);
 }
 
@@ -246,7 +272,8 @@ function parseRestaurantLine(line: string | undefined): ParsedRestaurant {
   const deliveriesMatch = line.match(/\((\d+)\s*deliver(?:y|ies)\)/i);
   const deliveriesCount = deliveriesMatch ? Number(deliveriesMatch[1]) : 1;
 
-  const sanitized = line.replace(/\(\d+\s*deliver(?:y|ies)\)/i, "").trim();
+  const withoutTime = line.replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g, "").trim();
+  const sanitized = withoutTime.replace(/\(\d+\s*deliver(?:y|ies)\)/i, "").trim();
   const [restaurantRaw, areaRaw] = sanitized.split("|").map((part) => part.trim());
 
   return {
@@ -259,7 +286,8 @@ function parseRestaurantLine(line: string | undefined): ParsedRestaurant {
 function parseDistance(line: string): number | undefined {
   const match = line.match(KM_REGEX);
   if (!match) return undefined;
-  const value = toNumber(match[1]);
+  const normalized = match[1].replace(/(\d):(\d)/g, "$1.$2");
+  const value = toNumber(normalized);
   return Number.isFinite(value) ? round2(value) : undefined;
 }
 
