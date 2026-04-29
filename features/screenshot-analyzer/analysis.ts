@@ -7,7 +7,7 @@ type ParsedRestaurant = {
   deliveriesCount: number;
 };
 
-const AMOUNT_REGEX = /₪\s*([0-9]+(?:[.,][0-9]{1,2})?)/;
+const AMOUNT_REGEX = /(?:₪|NIS|ILS|(?:\bIS\b))?\s*([0-9]+(?:[.,][0-9]{1,2})?)\s*$/i;
 const KM_REGEX = /([0-9]+(?:[.,][0-9]+)?)\s*km/i;
 const TIME_REGEX = /\b([01]?\d|2[0-3]):([0-5]\d)\b/;
 const DATE_TEXT_REGEX = /\b([0-3]?\d)\s+([A-Za-z]{3,9})\s+(20\d{2})\b/;
@@ -49,6 +49,7 @@ export function parseTasksFromOcrText(text: string, sourceImageIndex: number): D
   for (let index = 0; index < lines.length; index += 1) {
     const amountMatch = lines[index].match(AMOUNT_REGEX);
     if (!amountMatch) continue;
+    if (!looksLikeAmountLine(lines[index])) continue;
 
     const amountIls = toNumber(amountMatch[1]);
     if (!Number.isFinite(amountIls)) continue;
@@ -76,6 +77,13 @@ export function parseTasksFromOcrText(text: string, sourceImageIndex: number): D
   }
 
   return tasks;
+}
+
+function looksLikeAmountLine(line: string): boolean {
+  const cleaned = line.trim();
+  if (!cleaned) return false;
+  if (/[a-z]/i.test(cleaned) && !/(₪|NIS|ILS|IS)/i.test(cleaned)) return false;
+  return /([0-9]+(?:[.,][0-9]{1,2})?)\s*$/.test(cleaned);
 }
 
 export function buildShiftAnalysis(
