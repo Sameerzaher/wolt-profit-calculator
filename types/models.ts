@@ -91,3 +91,43 @@ export interface AppSettings {
   activeDeliveryId: string | null;
   activeShiftId: string | null;
 }
+
+export interface DeliveryTask {
+  id: string;
+  restaurant: string;
+  area?: string;
+  time?: string;
+  distanceKm?: number;
+  amountIls: number;
+  deliveriesCount: number;
+  sourceImageIndex: number;
+}
+
+export interface ShiftAnalysis {
+  grossIncome: number;
+  taskCount: number;
+  deliveryCount: number;
+  totalOfferKm: number;
+  firstTime?: string;
+  lastTime?: string;
+  estimatedDurationHours?: number;
+  grossPerHour?: number;
+  grossPerKm?: number;
+  estimatedVehicleCost?: number;
+  estimatedNetIncome?: number;
+  estimatedNetPerHour?: number;
+  rating: number;
+  insights: string[];
+}
+
+export interface ScreenshotAnalysisSnapshot {
+  shiftDate: string;
+  tasks: DeliveryTask[];
+  rawTexts: string[];
+  ocrDetectedDate?: string;
+  actualDrivenKm?: number;
+  costPerKm: number;
+  analysis: ShiftAnalysis;
+  createdAt: string;
+  updatedAt: string;
+}

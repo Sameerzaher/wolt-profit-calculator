@@ -5,7 +5,8 @@ export const STORAGE_KEYS = {
   shifts: "woltcalc_v2_shifts",
   preferredZones: "woltcalc_v2_preferred_zones",
   appSettings: "woltcalc_v2_app_settings",
-  fuelSettings: "woltcalc_v2_fuel_settings"
+  fuelSettings: "woltcalc_v2_fuel_settings",
+  screenshotLastAnalysis: "woltcalc_v2_screenshot_last_analysis"
 } as const;
 
 export const DEFAULT_FUEL_SETTINGS: FuelSettings = {

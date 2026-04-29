@@ -7,6 +7,7 @@ const navItems = [
   { href: "/", label: "בית" },
   { href: "/quick-check", label: "בדיקה" },
   { href: "/active-shift", label: "משמרת" },
+  { href: "/screenshot-analyzer", label: "OCR" },
   { href: "/where-to-go", label: "לאן" },
   { href: "/insights", label: "תובנות" },
   { href: "/history", label: "היסטוריה" }
@@ -16,7 +17,7 @@ export default function BottomNav() {
   const pathname = usePathname();
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-800 bg-slate-950/95 px-3 pb-[max(env(safe-area-inset-bottom),10px)] pt-2 backdrop-blur">
-      <ul className="mx-auto grid max-w-lg grid-cols-6 gap-2">
+      <ul className="mx-auto grid max-w-lg grid-cols-7 gap-2">
         {navItems.map((item) => {
           const active = pathname === item.href;
           return (
