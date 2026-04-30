@@ -12,11 +12,11 @@ import {
   usePreferredZonesStorage,
   useShiftsStorage
 } from "@/hooks/storage";
-import type { AppSettings, Delivery, DeliveryCompletionInput, FuelSettings, QuickCheckInput, Shift, ShiftSession } from "@/types/models";
+import type { AppSettings, AppShift, AppShiftSession, Delivery, DeliveryCompletionInput, FuelSettings, QuickCheckInput } from "@/types/models";
 
 type AppDataContextType = {
   deliveries: Delivery[];
-  shifts: Shift[];
+  shifts: AppShift[];
   preferredZones: string[];
   appSettings: AppSettings;
   fuelSettings: FuelSettings;
@@ -26,7 +26,7 @@ type AppDataContextType = {
   startShift: () => void;
   endShift: () => void;
   updateActiveShiftExpenses: (payload: { actualDrivenKm?: number; costPerKm?: number }) => void;
-  updateActiveShiftSessions: (sessions: ShiftSession[]) => void;
+  updateActiveShiftSessions: (sessions: AppShiftSession[]) => void;
   acceptQuickCheck: (input: QuickCheckInput) => void;
   addManualCompletedDelivery: (input: QuickCheckInput, completion: DeliveryCompletionInput) => void;
   markPickedUp: () => void;
@@ -42,7 +42,7 @@ type AppDataContextType = {
 
 const AppDataContext = createContext<AppDataContextType | null>(null);
 
-function ensureTodayShift(shifts: Shift[]): Shift {
+function ensureTodayShift(shifts: AppShift[]): AppShift {
   const today = dateKey(new Date().toISOString());
   const existing = shifts.find((shift) => shift.dateKey === today);
   if (existing) return existing;
@@ -56,7 +56,7 @@ function ensureTodayShift(shifts: Shift[]): Shift {
   };
 }
 
-function getCurrentShift(shifts: Shift[], activeShiftId: string | null): Shift {
+function getCurrentShift(shifts: AppShift[], activeShiftId: string | null): AppShift {
   if (activeShiftId) {
     const byId = shifts.find((shift) => shift.id === activeShiftId);
     if (byId) return byId;
@@ -92,7 +92,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: openShift.id });
       return;
     }
-    const shift: Shift = {
+    const shift: AppShift = {
       id: crypto.randomUUID(),
       dateKey: dateKey(new Date().toISOString()),
       startedAt: new Date().toISOString(),
@@ -140,7 +140,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const updateActiveShiftSessions = (sessions: ShiftSession[]) => {
+  const updateActiveShiftSessions = (sessions: AppShiftSession[]) => {
     const current = getCurrentShift(shiftsStore.state, appSettingsStore.state.activeShiftId);
     const hasCurrent = shiftsStore.state.some((shift) => shift.id === current.id);
     if (!hasCurrent) {

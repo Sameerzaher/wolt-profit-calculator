@@ -1,10 +1,10 @@
 import { calculateFuelCost, calculateQuickCheck } from "@/lib/scoring";
-import type { Delivery, FuelSettings, Shift } from "@/types/models";
+import type { AppShift, Delivery, FuelSettings } from "@/types/models";
 
-export function createDemoData(fuelSettings: FuelSettings): { deliveries: Delivery[]; shifts: Shift[] } {
+export function createDemoData(fuelSettings: FuelSettings): { deliveries: Delivery[]; shifts: AppShift[] } {
   const now = new Date();
   const shiftId = crypto.randomUUID();
-  const shift: Shift = {
+  const shift: AppShift = {
     id: shiftId,
     dateKey: now.toISOString().slice(0, 10),
     startedAt: new Date(now.getTime() - 5 * 60 * 60 * 1000).toISOString(),

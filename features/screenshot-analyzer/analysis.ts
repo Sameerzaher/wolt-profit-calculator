@@ -1,5 +1,7 @@
 import type { DeliveryTask, ShiftAnalysis, ShiftSession } from "@/types/models";
 import { clamp, round2 } from "@/lib/utils";
+import { calculateNetIncome, calculateRatePerHour, calculateRatePerKm, calculateVehicleCost } from "@/src/lib/calculations";
+import { buildShiftInsights } from "@/src/lib/insights";
 
 type ParsedRestaurant = {
   restaurant: string;
@@ -70,7 +72,8 @@ export function parseTasksFromOcrText(text: string, sourceImageIndex: number): D
       distanceKm,
       amountIls: round2(amountIls),
       deliveriesCount: parsedRestaurant.deliveriesCount,
-      sourceImageIndex
+      sourceImageIndex,
+      source: "ocr"
     });
   }
 
@@ -127,48 +130,33 @@ export function buildShiftAnalysis(
   const sortedMinutes = taskTimes.map(toMinutes).filter((v): v is number => v !== null).sort((a, b) => a - b);
 
   const sessionSummary = summarizeSessions(sessions);
-  const durationHours = sessionSummary.activeWorkHours ?? estimateDurationHours(sortedMinutes);
-  const firstTime = sortedMinutes.length > 0 ? toTimeString(sortedMinutes[0]) : undefined;
-  const lastTime = sortedMinutes.length > 0 ? toTimeString(sortedMinutes[sortedMinutes.length - 1]) : undefined;
-  const grossPerHour = durationHours && durationHours > 0 ? round2(grossIncome / durationHours) : undefined;
-  const grossPerKm = totalOfferKm > 0 ? round2(grossIncome / totalOfferKm) : undefined;
-
-  const estimatedVehicleCost =
-    actualDrivenKm !== undefined && Number.isFinite(actualDrivenKm)
-      ? round2(Math.max(0, actualDrivenKm) * Math.max(0, costPerKm))
-      : undefined;
-
-  const estimatedNetIncome =
-    estimatedVehicleCost !== undefined ? round2(grossIncome - estimatedVehicleCost) : undefined;
-  const estimatedNetPerHour =
-    estimatedNetIncome !== undefined && durationHours && durationHours > 0
-      ? round2(estimatedNetIncome / durationHours)
-      : undefined;
-
-  const insights = buildInsights(tasks, grossPerHour, actualDrivenKm, grossIncome);
-  const rating = scoreShift(grossPerHour, grossPerKm, insights);
+  const durationHours = sessionSummary.activeWorkHours ?? estimateDurationHours(sortedMinutes) ?? 0;
+  const grossPerHour = calculateRatePerHour(grossIncome, durationHours) ?? 0;
+  const grossPerKmByOffer = calculateRatePerKm(grossIncome, totalOfferKm);
+  const vehicleCost = calculateVehicleCost(actualDrivenKm, costPerKm) ?? 0;
+  const netIncome = calculateNetIncome(grossIncome, vehicleCost) ?? grossIncome;
+  const netPerHour = calculateRatePerHour(netIncome, durationHours) ?? 0;
+  const grossPerRealKm = calculateRatePerKm(grossIncome, actualDrivenKm);
+  const netPerKm = calculateRatePerKm(netIncome, actualDrivenKm);
+  const insights = buildShiftInsights(tasks, grossPerHour, grossPerRealKm);
+  const rating = scoreShift(grossPerHour, grossPerKmByOffer, insights);
 
   return {
     grossIncome,
+    netIncome,
+    vehicleCost,
     taskCount,
     deliveryCount,
-    totalOfferKm,
-    firstTime,
-    lastTime,
-    estimatedDurationHours: durationHours ? round2(durationHours) : undefined,
-    grossPerHour,
-    grossPerKm,
-    estimatedVehicleCost,
-    estimatedNetIncome,
-    estimatedNetPerHour,
+    actualDrivenKm,
+    offerDistanceKm: totalOfferKm,
+    activeHours: round2(durationHours),
+    breakHours: round2(sessionSummary.breakHours ?? 0),
+    grossPerHour: round2(grossPerHour),
+    netPerHour: round2(netPerHour),
+    grossPerKm: grossPerRealKm,
+    netPerKm,
     rating,
-    insights,
-    sessionCount: sessions.length,
-    activeWorkHours: sessionSummary.activeWorkHours,
-    breakHours: sessionSummary.breakHours,
-    sessionStartTime: sessionSummary.sessionStartTime,
-    sessionEndTime: sessionSummary.sessionEndTime,
-    hasLongWorkWarning: sessionSummary.hasLongWorkWarning
+    insights
   };
 }
 
@@ -180,23 +168,26 @@ export function summarizeSessions(sessions: ShiftSession[]): {
   hasLongWorkWarning?: boolean;
 } {
   const normalized = sessions
-    .map((session) => sessionToMinutes(session))
-    .filter((session): session is { start: number; end: number } => session !== null)
-    .sort((a, b) => a.start - b.start);
+    .map((session) => sessionToTimeline(session))
+    .filter((session): session is { startMs: number; endMs: number } => session !== null)
+    .sort((a, b) => a.startMs - b.startMs);
 
   if (normalized.length === 0) return {};
 
-  const activeMinutes = normalized.reduce((sum, session) => sum + (session.end - session.start), 0);
+  const activeMinutes = normalized.reduce((sum, session) => sum + (session.endMs - session.startMs) / 1000 / 60, 0);
   let breakMinutes = 0;
   for (let i = 1; i < normalized.length; i += 1) {
-    breakMinutes += Math.max(0, normalized[i].start - normalized[i - 1].end);
+    breakMinutes += Math.max(0, (normalized[i].startMs - normalized[i - 1].endMs) / 1000 / 60);
   }
+
+  const firstStart = new Date(normalized[0].startMs);
+  const lastEnd = new Date(normalized[normalized.length - 1].endMs);
 
   return {
     activeWorkHours: round2(activeMinutes / 60),
     breakHours: round2(breakMinutes / 60),
-    sessionStartTime: minutesToTime(normalized[0].start),
-    sessionEndTime: minutesToTime(normalized[normalized.length - 1].end),
+    sessionStartTime: `${pad2(firstStart.getHours())}:${pad2(firstStart.getMinutes())}`,
+    sessionEndTime: `${pad2(lastEnd.getHours())}:${pad2(lastEnd.getMinutes())}`,
     hasLongWorkWarning: activeMinutes > 12 * 60
   };
 }
@@ -204,21 +195,21 @@ export function summarizeSessions(sessions: ShiftSession[]): {
 export function validateSessions(sessions: ShiftSession[]): string[] {
   const issues: string[] = [];
   const normalized = sessions
-    .map((session) => ({ session, minutes: sessionToMinutes(session) }))
-    .filter((item) => item.minutes !== null) as Array<{
+    .map((session) => ({ session, timeline: sessionToTimeline(session) }))
+    .filter((item) => item.timeline !== null) as Array<{
     session: ShiftSession;
-    minutes: { start: number; end: number };
+    timeline: { startMs: number; endMs: number };
   }>;
 
   for (const item of normalized) {
-    if (item.minutes.start === item.minutes.end) {
+    if (item.timeline.startMs === item.timeline.endMs) {
       issues.push("שעת סיום לא יכולה להיות זהה לשעת התחלה.");
     }
   }
 
-  const sorted = [...normalized].sort((a, b) => a.minutes.start - b.minutes.start);
+  const sorted = [...normalized].sort((a, b) => a.timeline.startMs - b.timeline.startMs);
   for (let i = 1; i < sorted.length; i += 1) {
-    if (sorted[i].minutes.start < sorted[i - 1].minutes.end) {
+    if (sorted[i].timeline.startMs < sorted[i - 1].timeline.endMs) {
       issues.push("מקטעי עבודה חופפים זה לזה.");
       break;
     }
@@ -237,7 +228,7 @@ export function dedupeTasks(tasks: DeliveryTask[]): DeliveryTask[] {
   const output: DeliveryTask[] = [];
   for (const task of tasks) {
     const key = [
-      task.restaurant.trim().toLowerCase(),
+      (task.restaurant ?? "").trim().toLowerCase(),
       task.time ?? "",
       task.amountIls.toFixed(2),
       task.distanceKm?.toFixed(2) ?? ""
@@ -258,70 +249,6 @@ export function detectShiftDateFromText(text: string): string | undefined {
   if (!Number.isFinite(day) || !month || !Number.isFinite(year)) return undefined;
   if (day < 1 || day > 31) return undefined;
   return `${year}-${pad2(month)}-${pad2(day)}`;
-}
-
-function buildInsights(
-  tasks: DeliveryTask[],
-  grossPerHour: number | undefined,
-  actualDrivenKm: number | undefined,
-  grossIncome: number
-): string[] {
-  const primaryInsights: string[] = [];
-  const extraInsights: string[] = [];
-
-  if (grossPerHour !== undefined) {
-    if (grossPerHour > 70) primaryInsights.push("משמרת חזקה");
-    else if (grossPerHour < 45) primaryInsights.push("משמרת חלשה");
-  }
-
-  const grossPerRealKm = actualDrivenKm !== undefined && actualDrivenKm > 0 ? grossIncome / actualDrivenKm : undefined;
-  if (grossPerRealKm !== undefined) {
-    if (grossPerRealKm > 4) primaryInsights.push("ק״מ יעיל");
-    if (grossPerRealKm < 3) primaryInsights.push("נסעת יותר מדי");
-  }
-
-  const bestRestaurant = groupBest(tasks, (task) => task.restaurant);
-  if (bestRestaurant) extraInsights.push(`מסעדה חזקה: ${bestRestaurant}`);
-
-  const bestArea = groupBest(tasks, (task) => task.area ?? "Unknown area");
-  if (bestArea && bestArea !== "Unknown area") extraInsights.push(`אזור חזק: ${bestArea}`);
-
-  const bestBlock = getBestTimeBlock(tasks);
-  if (bestBlock) extraInsights.push(`זמן חזק: ${bestBlock}`);
-
-  const merged = [...primaryInsights, ...extraInsights];
-  const unique = [...new Set(merged)];
-  if (unique.length >= 3) return unique.slice(0, 5);
-
-  const fallback = "אין מספיק נתונים — מומלץ להוסיף עוד צילומים או לעדכן ק״מ אמיתי";
-  while (unique.length < 3) unique.push(fallback);
-  return unique.slice(0, 5);
-}
-
-function groupBest(tasks: DeliveryTask[], keySelector: (task: DeliveryTask) => string): string | undefined {
-  const revenueByKey = new Map<string, number>();
-  for (const task of tasks) {
-    const key = keySelector(task).trim();
-    if (!key) continue;
-    revenueByKey.set(key, (revenueByKey.get(key) ?? 0) + task.amountIls);
-  }
-  const sorted = [...revenueByKey.entries()].sort((a, b) => b[1] - a[1]);
-  return sorted[0]?.[0];
-}
-
-function getBestTimeBlock(tasks: DeliveryTask[]): string | undefined {
-  const blocks = new Map<string, number>();
-  for (const task of tasks) {
-    if (!task.time) continue;
-    const minutes = toMinutes(task.time);
-    if (minutes === null) continue;
-    const startHour = Math.floor((minutes / 60) / 3) * 3;
-    const label = `${pad2(startHour)}:00-${pad2((startHour + 3) % 24)}:00`;
-    blocks.set(label, (blocks.get(label) ?? 0) + task.amountIls);
-  }
-
-  const sorted = [...blocks.entries()].sort((a, b) => b[1] - a[1]);
-  return sorted[0]?.[0];
 }
 
 function scoreShift(grossPerHour: number | undefined, grossPerKm: number | undefined, insights: string[]): number {
@@ -382,12 +309,21 @@ function estimateDurationHours(sortedMinutes: number[]): number | undefined {
   return diff / 60;
 }
 
-function sessionToMinutes(session: ShiftSession): { start: number; end: number } | null {
-  const start = toMinutes(session.startTime);
-  const end = toMinutes(session.endTime);
-  if (start === null || end === null) return null;
-  const normalizedEnd = session.isNextDay || session.endsNextDay || end < start ? end + 24 * 60 : end;
-  return { start, end: normalizedEnd };
+function sessionToTimeline(session: ShiftSession): { startMs: number; endMs: number } | null {
+  const startDate = parseDateOrTime(session.startDateTime);
+  const endDateRaw = parseDateOrTime(session.endDateTime);
+  if (!startDate || !endDateRaw) return null;
+
+  const endDate = new Date(endDateRaw.getTime());
+  const isTimeOnlyInput = isTimeOnly(session.startDateTime) || isTimeOnly(session.endDateTime);
+  const isEarlier = endDate.getTime() < startDate.getTime();
+  const shouldMoveToNextDay = Boolean(session.isOvernight) || isEarlier || (isTimeOnlyInput && endDate.getTime() <= startDate.getTime());
+
+  if (shouldMoveToNextDay && endDate.getTime() <= startDate.getTime()) {
+    endDate.setDate(endDate.getDate() + 1);
+  }
+
+  return { startMs: startDate.getTime(), endMs: endDate.getTime() };
 }
 
 function toMinutes(time: string): number | null {
@@ -406,11 +342,21 @@ function toTimeString(totalMinutes: number): string {
   return `${pad2(hours)}:${pad2(minutes)}`;
 }
 
-function minutesToTime(totalMinutes: number): string {
-  const normalized = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
-  const hours = Math.floor(normalized / 60);
-  const minutes = normalized % 60;
-  return `${pad2(hours)}:${pad2(minutes)}`;
+function parseDateOrTime(input: string): Date | null {
+  if (!input) return null;
+  if (isTimeOnly(input)) {
+    const [hour, minute] = input.split(":").map(Number);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
+  }
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function isTimeOnly(value: string): boolean {
+  return /^\d{1,2}:\d{2}$/.test(value);
 }
 
 function toNumber(value: string): number {

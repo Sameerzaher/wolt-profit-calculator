@@ -6,6 +6,8 @@ import { useSearchParams } from "next/navigation";
 import ScreenHeader from "@/components/ScreenHeader";
 import { buildShiftAnalysis, dedupeTasks, detectShiftDateFromText, parseTasksFromOcrText, summarizeSessions, validateSessions } from "@/features/screenshot-analyzer/analysis";
 import { readShiftAnalysisByDate, saveShiftAnalysisByDate } from "@/lib/storage";
+import EditableOcrTable from "@/src/components/ocr/EditableOcrTable";
+import { getTodayDateInput } from "@/src/lib/dateTime";
 import type { DeliveryTask, ShiftAnalysis, ShiftSession } from "@/types/models";
 
 type UploadItem = {
@@ -17,6 +19,12 @@ type UploadItem = {
 type OcrProgress = {
   imageIndex: number;
   percent: number;
+};
+
+type PendingOcrBatch = {
+  tasks: DeliveryTask[];
+  rawTexts: string[];
+  detectedDate?: string;
 };
 
 const DEFAULT_COST_PER_KM = 0.7;
@@ -48,6 +56,7 @@ function ScreenshotAnalyzerContent() {
   const [costPerKm, setCostPerKm] = useState<string>(String(DEFAULT_COST_PER_KM));
   const [createdAt, setCreatedAt] = useState<string>(new Date().toISOString());
   const [confirmedAnalysis, setConfirmedAnalysis] = useState<ShiftAnalysis | null>(null);
+  const [pendingBatch, setPendingBatch] = useState<PendingOcrBatch | null>(null);
 
   useEffect(() => {
     const snapshot = readShiftAnalysisByDate(shiftDate);
@@ -166,14 +175,27 @@ function ScreenshotAnalyzerContent() {
         detectedDate = detectedDate ?? detectShiftDateFromText(text);
         collectedTasks.push(...parseTasksFromOcrText(text, imageIndex));
       }
-      const mergedTasks = dedupeTasks([...tasks, ...collectedTasks]);
+      const dedupedIncomingTasks = dedupeTasks(collectedTasks);
 
-      if (mergedTasks.length === 0) {
+      if (dedupedIncomingTasks.length === 0) {
         setError("לא זוהו שורות משלוחים. נסה תמונות חדות יותר.");
+        return;
       }
-      if (detectedDate) setSuggestedDate(detectedDate);
-      setRawTexts((prev) => [...prev, ...collectedTexts]);
-      setTasks(mergedTasks);
+      const existingShift = readShiftAnalysisByDate(shiftDate);
+      const hasExistingShift = Boolean(existingShift && existingShift.tasks.length > 0);
+
+      if (hasExistingShift) {
+        setPendingBatch({
+          tasks: dedupedIncomingTasks,
+          rawTexts: collectedTexts,
+          detectedDate
+        });
+      } else {
+        setTasks(dedupeTasks([...tasks, ...dedupedIncomingTasks]));
+        setRawTexts((prev) => [...prev, ...collectedTexts]);
+        if (detectedDate) setSuggestedDate(detectedDate);
+      }
+
       setUploads([]);
     } catch (ocrError) {
       console.error(ocrError);
@@ -204,7 +226,8 @@ function ScreenshotAnalyzerContent() {
         distanceKm: undefined,
         amountIls: 0,
         deliveriesCount: 1,
-        sourceImageIndex: -1
+        sourceImageIndex: -1,
+        source: "manual"
       }
     ]);
   };
@@ -214,9 +237,9 @@ function ScreenshotAnalyzerContent() {
       ...prev,
       {
         id: crypto.randomUUID(),
-        startTime: "13:00",
-        endTime: "15:00",
-        isNextDay: false
+        startDateTime: `${shiftDate}T13:00:00`,
+        endDateTime: `${shiftDate}T15:00:00`,
+        isOvernight: false
       }
     ]);
   };
@@ -234,7 +257,7 @@ function ScreenshotAnalyzerContent() {
       setError("אין שורות לחישוב. הוסף לפחות שורה אחת.");
       return;
     }
-    const cleanedTasks = tasks.filter((task) => task.restaurant.trim() && task.amountIls > 0);
+    const cleanedTasks = tasks.filter((task) => (task.restaurant ?? "").trim() && task.amountIls > 0);
     if (cleanedTasks.length === 0) {
       setError("נדרשים מסעדה וסכום גדול מ-0 לפחות בשורה אחת.");
       return;
@@ -243,6 +266,24 @@ function ScreenshotAnalyzerContent() {
     const next = buildShiftAnalysis(cleanedTasks, actualDrivenKmValue, costPerKmValue, sessions);
     setTasks(cleanedTasks);
     setConfirmedAnalysis(next);
+  };
+
+  const resolvePendingBatch = (mode: "merge" | "replace" | "cancel") => {
+    if (!pendingBatch) return;
+    if (mode === "cancel") {
+      setPendingBatch(null);
+      return;
+    }
+    if (mode === "merge") {
+      setTasks((prev) => dedupeTasks([...prev, ...pendingBatch.tasks]));
+      setRawTexts((prev) => [...prev, ...pendingBatch.rawTexts]);
+    } else {
+      setTasks(dedupeTasks([...pendingBatch.tasks]));
+      setRawTexts([...pendingBatch.rawTexts]);
+      setConfirmedAnalysis(null);
+    }
+    if (pendingBatch.detectedDate) setSuggestedDate(pendingBatch.detectedDate);
+    setPendingBatch(null);
   };
 
   return (
@@ -319,13 +360,41 @@ function ScreenshotAnalyzerContent() {
           </p>
         ) : null}
         {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
+        {pendingBatch ? (
+          <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+            <p className="font-bold">יש כבר משמרת בתאריך הזה. איך להמשיך?</p>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => resolvePendingBatch("merge")}
+                className="rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-2 py-2 font-bold text-emerald-100"
+              >
+                מיזוג עם קיים
+              </button>
+              <button
+                type="button"
+                onClick={() => resolvePendingBatch("replace")}
+                className="rounded-lg border border-amber-500/40 bg-amber-500/20 px-2 py-2 font-bold text-amber-100"
+              >
+                החלף קיים
+              </button>
+              <button
+                type="button"
+                onClick={() => resolvePendingBatch("cancel")}
+                className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-2 font-bold text-slate-100"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {tasks.length > 0 ? (
         <>
           <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-200">Sessions / הפסקות</p>
+              <p className="text-sm font-bold text-slate-200">מקטעי עבודה</p>
               <button
                 type="button"
                 onClick={addSession}
@@ -346,18 +415,18 @@ function ScreenshotAnalyzerContent() {
                       <div>
                         <label className="mb-1 block text-[11px] text-slate-400">תחילת מקטע</label>
                         <input
-                          type="time"
-                          value={session.startTime}
-                          onChange={(e) => updateSession(session.id, { startTime: e.target.value })}
+                          type="datetime-local"
+                          value={toDateTimeLocalValue(session.startDateTime)}
+                          onChange={(e) => updateSession(session.id, { startDateTime: fromDateTimeLocalValue(e.target.value) })}
                           className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
                         />
                       </div>
                       <div>
                         <label className="mb-1 block text-[11px] text-slate-400">סיום מקטע</label>
                         <input
-                          type="time"
-                          value={session.endTime}
-                          onChange={(e) => updateSession(session.id, { endTime: e.target.value })}
+                          type="datetime-local"
+                          value={toDateTimeLocalValue(session.endDateTime)}
+                          onChange={(e) => updateSession(session.id, { endDateTime: fromDateTimeLocalValue(e.target.value) })}
                           className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
                         />
                       </div>
@@ -366,8 +435,8 @@ function ScreenshotAnalyzerContent() {
                       <label className="flex items-center gap-2 text-xs text-slate-300">
                         <input
                           type="checkbox"
-                          checked={session.isNextDay || session.endsNextDay || false}
-                          onChange={(e) => updateSession(session.id, { isNextDay: e.target.checked })}
+                          checked={session.isOvernight || false}
+                          onChange={(e) => updateSession(session.id, { isOvernight: e.target.checked })}
                         />
                         מסתיים ביום הבא
                       </label>
@@ -399,93 +468,20 @@ function ScreenshotAnalyzerContent() {
             ) : null}
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-200">תיקון OCR לפני חישוב</p>
-              <button
-                type="button"
-                onClick={addManualTaskRow}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1 text-xs font-bold text-slate-200"
-              >
-                הוסף שורה ידנית
-              </button>
-            </div>
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[680px] border-collapse text-xs">
-                <thead>
-                  <tr className="text-slate-400">
-                    <th className="border-b border-slate-800 p-2 text-right">restaurant</th>
-                    <th className="border-b border-slate-800 p-2 text-right">time</th>
-                    <th className="border-b border-slate-800 p-2 text-right">distance (km)</th>
-                    <th className="border-b border-slate-800 p-2 text-right">amount (₪)</th>
-                    <th className="border-b border-slate-800 p-2 text-right">deliveries count</th>
-                    <th className="border-b border-slate-800 p-2 text-right">פעולות</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tasks.map((task) => (
-                    <tr key={task.id}>
-                      <td className="border-b border-slate-900 p-2">
-                        <input
-                          value={task.restaurant}
-                          onChange={(e) => updateTask(task.id, { restaurant: e.target.value })}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
-                        />
-                      </td>
-                      <td className="border-b border-slate-900 p-2">
-                        <input
-                          value={task.time ?? ""}
-                          onChange={(e) => updateTask(task.id, { time: e.target.value || undefined })}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
-                        />
-                      </td>
-                      <td className="border-b border-slate-900 p-2">
-                        <input
-                          value={task.distanceKm ?? ""}
-                          onChange={(e) => updateTask(task.id, { distanceKm: toOptionalNumber(e.target.value) })}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
-                        />
-                      </td>
-                      <td className="border-b border-slate-900 p-2">
-                        <input
-                          value={task.amountIls}
-                          onChange={(e) => updateTask(task.id, { amountIls: toNumber(e.target.value) ?? 0 })}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
-                        />
-                      </td>
-                      <td className="border-b border-slate-900 p-2">
-                        <input
-                          value={task.deliveriesCount}
-                          onChange={(e) => {
-                            const next = toNumber(e.target.value);
-                            if (next !== null) updateTask(task.id, { deliveriesCount: Math.max(1, Math.round(next)) });
-                          }}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
-                        />
-                      </td>
-                      <td className="border-b border-slate-900 p-2">
-                        <button
-                          type="button"
-                          onClick={() => deleteTask(task.id)}
-                          className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] font-bold text-rose-100"
-                        >
-                          מחק
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button
-              type="button"
-              onClick={calculateShift}
-              disabled={tasks.length === 0}
-              className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60"
-            >
-              חשב משמרת
-            </button>
-          </section>
+          <EditableOcrTable
+            tasks={tasks}
+            onUpdateTask={updateTask}
+            onDeleteTask={deleteTask}
+            onAddManualTask={addManualTaskRow}
+          />
+          <button
+            type="button"
+            onClick={calculateShift}
+            disabled={tasks.length === 0}
+            className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60"
+          >
+            חשב משמרת
+          </button>
 
           {confirmedAnalysis ? (
             <>
@@ -508,17 +504,16 @@ function ScreenshotAnalyzerContent() {
               </section>
 
               <section className="grid grid-cols-2 gap-3 rounded-2xl border border-emerald-500/30 bg-slate-900 p-4">
-                <Metric label="Gross income" value={formatCurrency(confirmedAnalysis.grossIncome)} />
-                <Metric label="Net income" value={formatMaybeCurrency(confirmedAnalysis.estimatedNetIncome)} />
-                <Metric label="Tasks" value={String(confirmedAnalysis.taskCount)} />
-                <Metric label="Real deliveries" value={String(confirmedAnalysis.deliveryCount)} />
-                <Metric label="Duration" value={formatDuration(confirmedAnalysis.estimatedDurationHours)} />
-                <Metric label="Net work time" value={formatDuration(confirmedAnalysis.activeWorkHours)} />
-                <Metric label="Break time" value={formatDuration(confirmedAnalysis.breakHours)} />
-                <Metric label="Actual driven km" value={actualDrivenKmValue !== undefined ? String(actualDrivenKmValue) : "-"} />
-                <Metric label="Gross/hour" value={formatMaybeCurrency(confirmedAnalysis.grossPerHour)} />
-                <Metric label="Net/hour" value={formatMaybeCurrency(confirmedAnalysis.estimatedNetPerHour)} />
-                <Metric label="Gross/km" value={confirmedAnalysis.grossPerKm !== undefined ? `₪${confirmedAnalysis.grossPerKm.toFixed(2)}` : "-"} />
+                <Metric label="הכנסה ברוטו" value={formatCurrency(confirmedAnalysis.grossIncome)} />
+                <Metric label="עלות רכב" value={formatCurrency(confirmedAnalysis.vehicleCost)} />
+                <Metric label="רווח נטו" value={formatCurrency(confirmedAnalysis.netIncome)} />
+                <Metric label="נטו לשעה" value={formatMaybeCurrency(confirmedAnalysis.netPerHour)} />
+                <Metric label="₪ לק״מ" value={confirmedAnalysis.netPerKm !== undefined ? `₪${confirmedAnalysis.netPerKm.toFixed(2)}` : "-"} />
+                <Metric label="ק״מ אמיתי" value={actualDrivenKmValue !== undefined ? String(actualDrivenKmValue) : "-"} />
+                <Metric label="ברוטו לשעה" value={formatMaybeCurrency(confirmedAnalysis.grossPerHour)} />
+                <Metric label="ברוטו לק״מ" value={confirmedAnalysis.grossPerKm !== undefined ? `₪${confirmedAnalysis.grossPerKm.toFixed(2)}` : "-"} />
+                <Metric label="זמן עבודה נטו" value={formatDuration(confirmedAnalysis.activeHours)} />
+                <Metric label="זמן הפסקות" value={formatDuration(confirmedAnalysis.breakHours)} />
                 <Metric label="Rating" value={`${confirmedAnalysis.rating}/10`} />
               </section>
 
@@ -605,18 +600,26 @@ function formatDuration(hours: number | undefined): string {
   return `${hours.toFixed(2)}h`;
 }
 
-function getTodayDateInput(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function isLikelyImageFile(file: File): boolean {
   if (file.type?.startsWith("image/")) return true;
   const lower = file.name.toLowerCase();
   return [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"].some((ext) =>
     lower.endsWith(ext)
   );
+}
+
+function toDateTimeLocalValue(dateTime: string): string {
+  const date = new Date(dateTime);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function fromDateTimeLocalValue(value: string): string {
+  if (!value) return "";
+  return `${value}:00`;
 }

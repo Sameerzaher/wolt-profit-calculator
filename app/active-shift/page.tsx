@@ -7,7 +7,9 @@ import { useAppData } from "@/components/AppDataProvider";
 import { isBadOrder } from "@/features/orders/history";
 import { calculateActiveShiftSnapshot } from "@/features/shifts/momentum";
 import { summarizeShiftSessions, validateShiftSessions } from "@/features/shifts/sessions";
-import type { ShiftSession } from "@/types/models";
+import { calculateRatePerHour, calculateRatePerKm, calculateVehicleCost } from "@/src/lib/calculations";
+import NetProfitCard from "@/src/components/shift/NetProfitCard";
+import type { AppShiftSession } from "@/types/models";
 
 export default function ActiveShiftPage() {
   const { deliveries, shifts, fuelSettings, appSettings, endShift, updateActiveShiftExpenses, updateActiveShiftSessions } = useAppData();
@@ -16,7 +18,7 @@ export default function ActiveShiftPage() {
     () => shifts.find((entry) => entry.id === appSettings.activeShiftId) ?? shifts.find((entry) => !entry.endedAt),
     [appSettings.activeShiftId, shifts]
   );
-  const [sessions, setSessions] = useState<ShiftSession[]>([]);
+  const [sessions, setSessions] = useState<AppShiftSession[]>([]);
   const [actualKmInput, setActualKmInput] = useState("");
   const [costPerKmInput, setCostPerKmInput] = useState("0.7");
 
@@ -32,12 +34,11 @@ export default function ActiveShiftPage() {
   const sessionIssues = useMemo(() => validateShiftSessions(sessions), [sessions]);
   const activeWorkHours = sessionSummary.activeWorkHours ?? (shift.runningMinutes > 0 ? shift.runningMinutes / 60 : 0);
   const grossIncome = shift.incomeSoFar;
-  const vehicleCost = actualKm !== undefined ? actualKm * costPerKm : 0;
+  const vehicleCost = calculateVehicleCost(actualKm, costPerKm) ?? 0;
   const netIncome = grossIncome - vehicleCost;
-  const grossPerHour = activeWorkHours > 0 ? grossIncome / activeWorkHours : 0;
-  const netPerHour = activeWorkHours > 0 ? netIncome / activeWorkHours : 0;
-  const grossPerKm = actualKm && actualKm > 0 ? grossIncome / actualKm : 0;
-  const netToneClass = netPerHour > 60 ? "text-emerald-300" : netPerHour >= 40 ? "text-amber-300" : "text-rose-300";
+  const grossPerHour = calculateRatePerHour(grossIncome, activeWorkHours) ?? 0;
+  const netPerHour = calculateRatePerHour(netIncome, activeWorkHours) ?? 0;
+  const grossPerKm = calculateRatePerKm(grossIncome, actualKm);
   const canUseSessionHours = sessionSummary.activeWorkHours !== undefined;
 
   const wastedOrdersToday = deliveries.filter(
@@ -58,7 +59,7 @@ export default function ActiveShiftPage() {
     if (activeShift) updateActiveShiftSessions(next);
   };
 
-  const onUpdateSession = (id: string, patch: Partial<ShiftSession>) => {
+  const onUpdateSession = (id: string, patch: Partial<AppShiftSession>) => {
     const next = sessions.map((session) => (session.id === id ? { ...session, ...patch } : session));
     setSessions(next);
     if (activeShift) updateActiveShiftSessions(next);
@@ -178,7 +179,6 @@ export default function ActiveShiftPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <p className="text-sm font-bold text-slate-200">רווח נטו</p>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <div>
             <label className="mb-1 block text-xs text-slate-400">ק״מ אמיתי</label>
@@ -217,16 +217,15 @@ export default function ActiveShiftPage() {
             />
           </div>
         </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          <StatLine label="Gross income" value={`₪${grossIncome.toFixed(1)}`} />
-          <StatLine label="Vehicle cost" value={`₪${vehicleCost.toFixed(1)}`} />
-          <StatLine label="רווח נטו" value={`₪${netIncome.toFixed(1)}`} />
-          <StatLine label="Gross/hour" value={canUseSessionHours ? `₪${grossPerHour.toFixed(1)}` : "-"} />
-          <StatLine label="רווח לשעה נטו" value={`₪${netPerHour.toFixed(1)}`} valueClassName={netToneClass} />
-          <StatLine label="₪/km" value={actualKm && actualKm > 0 ? `₪${grossPerKm.toFixed(2)}` : "-"} />
-        </div>
       </section>
+      <NetProfitCard
+        grossIncome={grossIncome}
+        vehicleCost={vehicleCost}
+        netIncome={netIncome}
+        grossPerHour={canUseSessionHours ? grossPerHour : 0}
+        netPerHour={canUseSessionHours ? netPerHour : 0}
+        grossPerKm={grossPerKm}
+      />
 
       <section className="fixed inset-x-0 bottom-[4.6rem] z-20 px-3">
         <div className="mx-auto grid max-w-lg grid-cols-3 gap-2 rounded-2xl border border-slate-700 bg-slate-950/95 p-3 backdrop-blur">
@@ -254,15 +253,6 @@ function toOptionalNumber(value: string): number | undefined {
   if (!trimmed) return undefined;
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function StatLine({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
-  return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950 p-2">
-      <p className="text-[11px] text-slate-400">{label}</p>
-      <p className={`mt-1 text-sm font-black text-white ${valueClassName ?? ""}`}>{value}</p>
-    </div>
-  );
 }
 
 function formatHours(value: number | undefined): string {

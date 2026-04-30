@@ -1,5 +1,5 @@
 import { round2 } from "@/lib/utils";
-import type { ShiftSession } from "@/types/models";
+import type { AppShiftSession } from "@/types/models";
 
 type SessionRange = {
   id: string;
@@ -7,7 +7,7 @@ type SessionRange = {
   end: number;
 };
 
-export function summarizeShiftSessions(sessions: ShiftSession[]) {
+export function summarizeShiftSessions(sessions: AppShiftSession[]) {
   const ranges = toSortedRanges(sessions);
   if (ranges.length === 0) {
     return {
@@ -28,7 +28,7 @@ export function summarizeShiftSessions(sessions: ShiftSession[]) {
   };
 }
 
-export function validateShiftSessions(sessions: ShiftSession[]): string[] {
+export function validateShiftSessions(sessions: AppShiftSession[]): string[] {
   const issues: string[] = [];
   const ranges = toSortedRanges(sessions);
 
@@ -52,7 +52,7 @@ export function validateShiftSessions(sessions: ShiftSession[]): string[] {
   return issues;
 }
 
-function toSortedRanges(sessions: ShiftSession[]): SessionRange[] {
+function toSortedRanges(sessions: AppShiftSession[]): SessionRange[] {
   return sessions
     .map((session) => {
       const start = toMinutes(session.startTime);

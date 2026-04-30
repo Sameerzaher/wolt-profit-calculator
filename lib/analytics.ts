@@ -1,7 +1,7 @@
 import { calculateFuelCost } from "@/lib/scoring";
 import { dateKey, durationBetweenMinutes, getTodayKey, round2 } from "@/lib/utils";
 import { getZoneRegion } from "@/data/zones";
-import type { Delivery, DropoffDemandQuality, FuelSettings, Shift, ZoneStats, ZoneStrength } from "@/types/models";
+import type { AppShift, Delivery, DropoffDemandQuality, FuelSettings, ZoneStats, ZoneStrength } from "@/types/models";
 
 export interface DashboardStats {
   todayIncome: number;
@@ -36,7 +36,7 @@ export function getCompletedDeliveries(deliveries: Delivery[]): Delivery[] {
 
 export function calculateDashboardStats(
   deliveries: Delivery[],
-  shifts: Shift[],
+  shifts: AppShift[],
   fuelSettings: FuelSettings,
   dailyTarget: number
 ): DashboardStats {
@@ -69,7 +69,7 @@ export function calculateDashboardStats(
   };
 }
 
-export function calculateShiftStats(deliveries: Delivery[], fuelSettings: FuelSettings, shift?: Shift) {
+export function calculateShiftStats(deliveries: Delivery[], fuelSettings: FuelSettings, shift?: AppShift) {
   const shiftDeliveries = shift
     ? getCompletedDeliveries(deliveries).filter((d) => d.shiftId === shift.id)
     : getCompletedDeliveries(deliveries);

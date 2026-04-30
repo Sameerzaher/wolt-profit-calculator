@@ -1,6 +1,6 @@
 import { dateKey, durationBetweenMinutes, getTodayKey, round2 } from "@/lib/utils";
 import { calculateFuelCost } from "@/lib/scoring";
-import type { Delivery, FuelSettings, Shift } from "@/types/models";
+import type { AppShift, Delivery, FuelSettings } from "@/types/models";
 
 export interface ActiveShiftSnapshot {
   startedAt: string | null;
@@ -18,7 +18,7 @@ export interface ActiveShiftSnapshot {
 
 export function calculateActiveShiftSnapshot(
   deliveries: Delivery[],
-  shifts: Shift[],
+  shifts: AppShift[],
   fuelSettings: FuelSettings,
   dailyTarget: number,
   activeShiftId: string | null

@@ -2,14 +2,14 @@
 
 import { DEFAULT_APP_SETTINGS, DEFAULT_FUEL_SETTINGS, STORAGE_KEYS } from "@/lib/constants";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
-import type { AppSettings, Delivery, FuelSettings, Shift } from "@/types/models";
+import type { AppSettings, AppShift, Delivery, FuelSettings } from "@/types/models";
 
 export function useDeliveriesStorage() {
   return useLocalStorageState<Delivery[]>(STORAGE_KEYS.deliveries, []);
 }
 
 export function useShiftsStorage() {
-  return useLocalStorageState<Shift[]>(STORAGE_KEYS.shifts, []);
+  return useLocalStorageState<AppShift[]>(STORAGE_KEYS.shifts, []);
 }
 
 export function usePreferredZonesStorage() {
