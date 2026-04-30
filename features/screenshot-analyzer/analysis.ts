@@ -1,4 +1,4 @@
-import type { DeliveryTask, ShiftAnalysis } from "@/types/models";
+import type { DeliveryTask, ShiftAnalysis, ShiftSession } from "@/types/models";
 import { clamp, round2 } from "@/lib/utils";
 
 type ParsedRestaurant = {
@@ -115,7 +115,8 @@ function looksLikeAmountLine(line: string): boolean {
 export function buildShiftAnalysis(
   tasks: DeliveryTask[],
   actualDrivenKm?: number,
-  costPerKm = 0.7
+  costPerKm = 0.7,
+  sessions: ShiftSession[] = []
 ): ShiftAnalysis {
   const grossIncome = round2(tasks.reduce((sum, task) => sum + task.amountIls, 0));
   const taskCount = tasks.length;
@@ -125,7 +126,8 @@ export function buildShiftAnalysis(
   const taskTimes = tasks.map((task) => task.time).filter((value): value is string => Boolean(value));
   const sortedMinutes = taskTimes.map(toMinutes).filter((v): v is number => v !== null).sort((a, b) => a - b);
 
-  const durationHours = estimateDurationHours(sortedMinutes);
+  const sessionSummary = summarizeSessions(sessions);
+  const durationHours = sessionSummary.activeWorkHours ?? estimateDurationHours(sortedMinutes);
   const firstTime = sortedMinutes.length > 0 ? toTimeString(sortedMinutes[0]) : undefined;
   const lastTime = sortedMinutes.length > 0 ? toTimeString(sortedMinutes[sortedMinutes.length - 1]) : undefined;
   const grossPerHour = durationHours && durationHours > 0 ? round2(grossIncome / durationHours) : undefined;
@@ -160,8 +162,74 @@ export function buildShiftAnalysis(
     estimatedNetIncome,
     estimatedNetPerHour,
     rating,
-    insights
+    insights,
+    sessionCount: sessions.length,
+    activeWorkHours: sessionSummary.activeWorkHours,
+    breakHours: sessionSummary.breakHours,
+    sessionStartTime: sessionSummary.sessionStartTime,
+    sessionEndTime: sessionSummary.sessionEndTime,
+    hasLongWorkWarning: sessionSummary.hasLongWorkWarning
   };
+}
+
+export function summarizeSessions(sessions: ShiftSession[]): {
+  activeWorkHours?: number;
+  breakHours?: number;
+  sessionStartTime?: string;
+  sessionEndTime?: string;
+  hasLongWorkWarning?: boolean;
+} {
+  const normalized = sessions
+    .map((session) => sessionToMinutes(session))
+    .filter((session): session is { start: number; end: number } => session !== null)
+    .sort((a, b) => a.start - b.start);
+
+  if (normalized.length === 0) return {};
+
+  const activeMinutes = normalized.reduce((sum, session) => sum + (session.end - session.start), 0);
+  let breakMinutes = 0;
+  for (let i = 1; i < normalized.length; i += 1) {
+    breakMinutes += Math.max(0, normalized[i].start - normalized[i - 1].end);
+  }
+
+  return {
+    activeWorkHours: round2(activeMinutes / 60),
+    breakHours: round2(breakMinutes / 60),
+    sessionStartTime: minutesToTime(normalized[0].start),
+    sessionEndTime: minutesToTime(normalized[normalized.length - 1].end),
+    hasLongWorkWarning: activeMinutes > 12 * 60
+  };
+}
+
+export function validateSessions(sessions: ShiftSession[]): string[] {
+  const issues: string[] = [];
+  const normalized = sessions
+    .map((session) => ({ session, minutes: sessionToMinutes(session) }))
+    .filter((item) => item.minutes !== null) as Array<{
+    session: ShiftSession;
+    minutes: { start: number; end: number };
+  }>;
+
+  for (const item of normalized) {
+    if (item.minutes.start === item.minutes.end) {
+      issues.push("שעת סיום לא יכולה להיות זהה לשעת התחלה.");
+    }
+  }
+
+  const sorted = [...normalized].sort((a, b) => a.minutes.start - b.minutes.start);
+  for (let i = 1; i < sorted.length; i += 1) {
+    if (sorted[i].minutes.start < sorted[i - 1].minutes.end) {
+      issues.push("מקטעי עבודה חופפים זה לזה.");
+      break;
+    }
+  }
+
+  const summary = summarizeSessions(sessions);
+  if (summary.hasLongWorkWarning) {
+    issues.push("אזהרה: זמן עבודה נטו מעל 12 שעות.");
+  }
+
+  return [...new Set(issues)];
 }
 
 export function dedupeTasks(tasks: DeliveryTask[]): DeliveryTask[] {
@@ -198,30 +266,36 @@ function buildInsights(
   actualDrivenKm: number | undefined,
   grossIncome: number
 ): string[] {
-  const insights: string[] = [];
+  const primaryInsights: string[] = [];
+  const extraInsights: string[] = [];
 
   if (grossPerHour !== undefined) {
-    if (grossPerHour > 70) insights.push("Strong shift");
-    else if (grossPerHour >= 50) insights.push("Good shift");
-    else if (grossPerHour < 45) insights.push("Weak shift");
+    if (grossPerHour > 70) primaryInsights.push("משמרת חזקה");
+    else if (grossPerHour < 45) primaryInsights.push("משמרת חלשה");
   }
 
-  if (actualDrivenKm !== undefined && actualDrivenKm > 0) {
-    const ilsPerRealKm = grossIncome / actualDrivenKm;
-    if (ilsPerRealKm > 4) insights.push("Good ₪/km");
-    if (ilsPerRealKm < 3) insights.push("Too much driving");
+  const grossPerRealKm = actualDrivenKm !== undefined && actualDrivenKm > 0 ? grossIncome / actualDrivenKm : undefined;
+  if (grossPerRealKm !== undefined) {
+    if (grossPerRealKm > 4) primaryInsights.push("ק״מ יעיל");
+    if (grossPerRealKm < 3) primaryInsights.push("נסעת יותר מדי");
   }
 
   const bestRestaurant = groupBest(tasks, (task) => task.restaurant);
-  if (bestRestaurant) insights.push(`Top restaurant: ${bestRestaurant}`);
+  if (bestRestaurant) extraInsights.push(`מסעדה חזקה: ${bestRestaurant}`);
 
   const bestArea = groupBest(tasks, (task) => task.area ?? "Unknown area");
-  if (bestArea && bestArea !== "Unknown area") insights.push(`Top area: ${bestArea}`);
+  if (bestArea && bestArea !== "Unknown area") extraInsights.push(`אזור חזק: ${bestArea}`);
 
   const bestBlock = getBestTimeBlock(tasks);
-  if (bestBlock) insights.push(`Best time block: ${bestBlock}`);
+  if (bestBlock) extraInsights.push(`זמן חזק: ${bestBlock}`);
 
-  return insights;
+  const merged = [...primaryInsights, ...extraInsights];
+  const unique = [...new Set(merged)];
+  if (unique.length >= 3) return unique.slice(0, 5);
+
+  const fallback = "אין מספיק נתונים — מומלץ להוסיף עוד צילומים או לעדכן ק״מ אמיתי";
+  while (unique.length < 3) unique.push(fallback);
+  return unique.slice(0, 5);
 }
 
 function groupBest(tasks: DeliveryTask[], keySelector: (task: DeliveryTask) => string): string | undefined {
@@ -262,7 +336,7 @@ function scoreShift(grossPerHour: number | undefined, grossPerKm: number | undef
     if (grossPerKm > 5) score += 1;
     if (grossPerKm < 3) score -= 1;
   }
-  if (insights.includes("Too much driving")) score -= 1;
+  if (insights.includes("נסעת יותר מדי")) score -= 1;
   return clamp(Math.round(score), 1, 10);
 }
 
@@ -308,6 +382,14 @@ function estimateDurationHours(sortedMinutes: number[]): number | undefined {
   return diff / 60;
 }
 
+function sessionToMinutes(session: ShiftSession): { start: number; end: number } | null {
+  const start = toMinutes(session.startTime);
+  const end = toMinutes(session.endTime);
+  if (start === null || end === null) return null;
+  const normalizedEnd = session.isNextDay || session.endsNextDay || end < start ? end + 24 * 60 : end;
+  return { start, end: normalizedEnd };
+}
+
 function toMinutes(time: string): number | null {
   const match = time.match(TIME_REGEX);
   if (!match) return null;
@@ -318,6 +400,13 @@ function toMinutes(time: string): number | null {
 }
 
 function toTimeString(totalMinutes: number): string {
+  const normalized = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${pad2(hours)}:${pad2(minutes)}`;
+}
+
+function minutesToTime(totalMinutes: number): string {
   const normalized = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
   const hours = Math.floor(normalized / 60);
   const minutes = normalized % 60;

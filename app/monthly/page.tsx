@@ -34,19 +34,16 @@ export default function MonthlyPage() {
       <section className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
         <Metric label="ברוטו כולל" value={money(monthSummary.totalGross)} />
         <Metric label="נטו כולל" value={money(monthSummary.totalNet)} />
-        <Metric label="סה״כ משמרות" value={String(monthSummary.totalShifts)} />
-        <Metric label="סה״כ משימות" value={String(monthSummary.totalTasks)} />
-        <Metric label="סה״כ משלוחים" value={String(monthSummary.totalDeliveries)} />
-        <Metric label="סה״כ ק״מ אמיתי" value={num(monthSummary.totalActualKm)} />
+        <Metric label="סה״כ ק״מ" value={num(monthSummary.totalKm)} />
+        <Metric label="סה״כ שעות" value={num(monthSummary.totalHours)} />
         <Metric label="ממוצע ₪/שעה" value={monthSummary.avgPerHour ? money(monthSummary.avgPerHour) : "-"} />
         <Metric label="ממוצע ₪/ק״מ" value={monthSummary.avgPerKm ? money(monthSummary.avgPerKm) : "-"} />
-        <Metric label="משמרת חזקה" value={monthSummary.bestShift ?? "-"} />
-        <Metric label="משמרת חלשה" value={monthSummary.weakestShift ?? "-"} />
-        <Metric label="יום שבוע מוביל" value={monthSummary.bestWeekday ?? "-"} />
+        <Metric label="משמרת הכי טובה" value={monthSummary.bestShift ?? "-"} />
+        <Metric label="משמרת הכי חלשה" value={monthSummary.worstShift ?? "-"} />
       </section>
 
       <section className="rounded-2xl border border-emerald-500/30 bg-slate-900 p-4">
-        <p className="text-sm font-bold text-slate-100">סיכום שבועי (השבוע הנוכחי)</p>
+        <p className="text-sm font-bold text-slate-100">יעד שבועי</p>
         <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-slate-200">
           <p>ברוטו: {money(weekSummary.totalGross)}</p>
           <p>נטו: {money(weekSummary.totalNet)}</p>
@@ -73,35 +70,24 @@ export default function MonthlyPage() {
 function summarize(items: ReturnType<typeof listAllShiftAnalyses>) {
   const totalGross = items.reduce((sum, item) => sum + item.analysis.grossIncome, 0);
   const totalNet = items.reduce((sum, item) => sum + (item.analysis.estimatedNetIncome ?? item.analysis.grossIncome), 0);
-  const totalTasks = items.reduce((sum, item) => sum + item.analysis.taskCount, 0);
-  const totalDeliveries = items.reduce((sum, item) => sum + item.analysis.deliveryCount, 0);
-  const totalActualKm = items.reduce((sum, item) => sum + (item.actualDrivenKm ?? 0), 0);
-  const perHourValues = items.map((item) => item.analysis.grossPerHour).filter((value): value is number => value !== undefined);
-  const perKmValues = items.map((item) => item.analysis.grossPerKm).filter((value): value is number => value !== undefined);
-  const avgPerHour = perHourValues.length ? perHourValues.reduce((a, b) => a + b, 0) / perHourValues.length : undefined;
-  const avgPerKm = perKmValues.length ? perKmValues.reduce((a, b) => a + b, 0) / perKmValues.length : undefined;
+  const totalKm = items.reduce((sum, item) => sum + (item.actualDrivenKm ?? item.analysis.totalOfferKm), 0);
+  const totalHours = items.reduce((sum, item) => sum + (item.analysis.activeWorkHours ?? item.analysis.estimatedDurationHours ?? 0), 0);
+  const avgPerHour = totalHours > 0 ? totalGross / totalHours : undefined;
+  const avgPerKm = totalKm > 0 ? totalGross / totalKm : undefined;
 
   const sortedByGross = [...items].sort((a, b) => b.analysis.grossIncome - a.analysis.grossIncome);
-  const sortedByWeak = [...items].sort((a, b) => a.analysis.grossIncome - b.analysis.grossIncome);
-  const weekdayMap = new Map<string, number>();
-  for (const item of items) {
-    const weekday = new Date(item.shiftDate).toLocaleDateString("he-IL", { weekday: "long" });
-    weekdayMap.set(weekday, (weekdayMap.get(weekday) ?? 0) + item.analysis.grossIncome);
-  }
-  const bestWeekday = [...weekdayMap.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const sortedByWorst = [...items].sort((a, b) => a.analysis.grossIncome - b.analysis.grossIncome);
 
   return {
     totalGross,
     totalNet,
     totalShifts: items.length,
-    totalTasks,
-    totalDeliveries,
-    totalActualKm,
+    totalKm,
+    totalHours,
     avgPerHour,
     avgPerKm,
     bestShift: sortedByGross[0]?.shiftDate,
-    weakestShift: sortedByWeak[0]?.shiftDate,
-    bestWeekday
+    worstShift: sortedByWorst[0]?.shiftDate
   };
 }
 

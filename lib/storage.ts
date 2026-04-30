@@ -1,6 +1,7 @@
 import { STORAGE_KEYS } from "@/lib/constants";
 import type { ScreenshotAnalysisSnapshot } from "@/types/models";
-const SHIFT_ANALYSIS_PREFIX = "woltcalc_shift_analysis_";
+const SHIFT_PREFIX = "woltcalc_shift_";
+const LEGACY_SHIFT_ANALYSIS_PREFIX = "woltcalc_shift_analysis_";
 
 export function exportAllFromStorage() {
   return {
@@ -22,7 +23,7 @@ export function readLastScreenshotAnalysis(): ScreenshotAnalysisSnapshot | null 
 }
 
 export function getShiftAnalysisStorageKey(shiftDate: string): string {
-  return `${SHIFT_ANALYSIS_PREFIX}${shiftDate}`;
+  return `${SHIFT_PREFIX}${shiftDate}`;
 }
 
 export function saveShiftAnalysisByDate(snapshot: ScreenshotAnalysisSnapshot) {
@@ -31,7 +32,15 @@ export function saveShiftAnalysisByDate(snapshot: ScreenshotAnalysisSnapshot) {
 }
 
 export function readShiftAnalysisByDate(shiftDate: string): ScreenshotAnalysisSnapshot | null {
-  return safeRead<ScreenshotAnalysisSnapshot | null>(getShiftAnalysisStorageKey(shiftDate), null);
+  const current = safeRead<ScreenshotAnalysisSnapshot | null>(getShiftAnalysisStorageKey(shiftDate), null);
+  if (current) return current;
+  const legacyKey = `${LEGACY_SHIFT_ANALYSIS_PREFIX}${shiftDate}`;
+  const legacy = safeRead<ScreenshotAnalysisSnapshot | null>(legacyKey, null);
+  if (!legacy) return null;
+  // Migrate old key to new key format lazily on first read.
+  safeWrite(getShiftAnalysisStorageKey(shiftDate), legacy);
+  safeRemove(legacyKey);
+  return legacy;
 }
 
 export function deleteShiftAnalysisByDate(shiftDate: string) {
@@ -43,9 +52,19 @@ export function listAllShiftAnalyses(): ScreenshotAnalysisSnapshot[] {
   const items: ScreenshotAnalysisSnapshot[] = [];
   for (let i = 0; i < localStorage.length; i += 1) {
     const key = localStorage.key(i);
-    if (!key || !key.startsWith(SHIFT_ANALYSIS_PREFIX)) continue;
+    if (!key) continue;
+    const isCurrent = key.startsWith(SHIFT_PREFIX);
+    const isLegacy = key.startsWith(LEGACY_SHIFT_ANALYSIS_PREFIX);
+    if (!isCurrent && !isLegacy) continue;
     const item = safeRead<ScreenshotAnalysisSnapshot | null>(key, null);
-    if (item) items.push(item);
+    if (!item) continue;
+    if (isLegacy) {
+      // Keep one canonical key after migration.
+      const nextKey = getShiftAnalysisStorageKey(item.shiftDate);
+      safeWrite(nextKey, item);
+      safeRemove(key);
+    }
+    items.push(item);
   }
   return items.sort((a, b) => b.shiftDate.localeCompare(a.shiftDate));
 }

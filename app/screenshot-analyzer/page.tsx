@@ -4,9 +4,9 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import ScreenHeader from "@/components/ScreenHeader";
-import { buildShiftAnalysis, dedupeTasks, detectShiftDateFromText, parseTasksFromOcrText } from "@/features/screenshot-analyzer/analysis";
+import { buildShiftAnalysis, dedupeTasks, detectShiftDateFromText, parseTasksFromOcrText, summarizeSessions, validateSessions } from "@/features/screenshot-analyzer/analysis";
 import { readShiftAnalysisByDate, saveShiftAnalysisByDate } from "@/lib/storage";
-import type { DeliveryTask } from "@/types/models";
+import type { DeliveryTask, ShiftAnalysis, ShiftSession } from "@/types/models";
 
 type UploadItem = {
   id: string;
@@ -38,6 +38,7 @@ function ScreenshotAnalyzerContent() {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [rawTexts, setRawTexts] = useState<string[]>([]);
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
+  const [sessions, setSessions] = useState<ShiftSession[]>([]);
   const [suggestedDate, setSuggestedDate] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +47,13 @@ function ScreenshotAnalyzerContent() {
   const [actualDrivenKm, setActualDrivenKm] = useState<string>("");
   const [costPerKm, setCostPerKm] = useState<string>(String(DEFAULT_COST_PER_KM));
   const [createdAt, setCreatedAt] = useState<string>(new Date().toISOString());
+  const [confirmedAnalysis, setConfirmedAnalysis] = useState<ShiftAnalysis | null>(null);
 
   useEffect(() => {
     const snapshot = readShiftAnalysisByDate(shiftDate);
     if (!snapshot) {
       setTasks([]);
+      setSessions([]);
       setRawTexts([]);
       setSuggestedDate(null);
       setActualDrivenKm("");
@@ -59,11 +62,13 @@ function ScreenshotAnalyzerContent() {
       return;
     }
     setTasks(snapshot.tasks);
+    setSessions(snapshot.sessions ?? []);
     setRawTexts(snapshot.rawTexts);
     setSuggestedDate(snapshot.ocrDetectedDate ?? null);
     setActualDrivenKm(snapshot.actualDrivenKm !== undefined ? String(snapshot.actualDrivenKm) : "");
     setCostPerKm(String(snapshot.costPerKm));
     setCreatedAt(snapshot.createdAt);
+    setConfirmedAnalysis(snapshot.analysis ?? null);
   }, [shiftDate]);
 
   useEffect(() => {
@@ -77,25 +82,28 @@ function ScreenshotAnalyzerContent() {
   const actualDrivenKmValue = toOptionalNumber(actualDrivenKm);
   const costPerKmValue = toNumber(costPerKm) ?? DEFAULT_COST_PER_KM;
 
-  const analysis = useMemo(
-    () => buildShiftAnalysis(tasks, actualDrivenKmValue, costPerKmValue),
-    [tasks, actualDrivenKmValue, costPerKmValue]
-  );
+  const sessionIssues = useMemo(() => validateSessions(sessions), [sessions]);
+  const sessionSummary = useMemo(() => summarizeSessions(sessions), [sessions]);
 
   useEffect(() => {
-    if (tasks.length === 0) return;
+    if (tasks.length === 0 || !confirmedAnalysis) return;
     saveShiftAnalysisByDate({
       shiftDate,
+      sessions,
       tasks,
       rawTexts,
       ocrDetectedDate: suggestedDate ?? undefined,
       actualDrivenKm: actualDrivenKmValue,
       costPerKm: costPerKmValue,
-      analysis,
+      analysis: confirmedAnalysis,
       createdAt,
       updatedAt: new Date().toISOString()
     });
-  }, [analysis, actualDrivenKmValue, costPerKmValue, createdAt, rawTexts, shiftDate, suggestedDate, tasks]);
+  }, [actualDrivenKmValue, confirmedAnalysis, costPerKmValue, createdAt, rawTexts, sessions, shiftDate, suggestedDate, tasks]);
+
+  useEffect(() => {
+    setConfirmedAnalysis(null);
+  }, [tasks, actualDrivenKm, costPerKm, sessions]);
 
   const onPickFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
@@ -182,6 +190,61 @@ function ScreenshotAnalyzerContent() {
     );
   };
 
+  const deleteTask = (id: string) => {
+    setTasks((prev) => prev.filter((task) => task.id !== id));
+  };
+
+  const addManualTaskRow = () => {
+    setTasks((prev) => [
+      ...prev,
+      {
+        id: `manual-${crypto.randomUUID()}`,
+        restaurant: "",
+        time: "",
+        distanceKm: undefined,
+        amountIls: 0,
+        deliveriesCount: 1,
+        sourceImageIndex: -1
+      }
+    ]);
+  };
+
+  const addSession = () => {
+    setSessions((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        startTime: "13:00",
+        endTime: "15:00",
+        isNextDay: false
+      }
+    ]);
+  };
+
+  const removeSession = (id: string) => {
+    setSessions((prev) => prev.filter((session) => session.id !== id));
+  };
+
+  const updateSession = (id: string, patch: Partial<ShiftSession>) => {
+    setSessions((prev) => prev.map((session) => (session.id === id ? { ...session, ...patch } : session)));
+  };
+
+  const calculateShift = () => {
+    if (tasks.length === 0) {
+      setError("אין שורות לחישוב. הוסף לפחות שורה אחת.");
+      return;
+    }
+    const cleanedTasks = tasks.filter((task) => task.restaurant.trim() && task.amountIls > 0);
+    if (cleanedTasks.length === 0) {
+      setError("נדרשים מסעדה וסכום גדול מ-0 לפחות בשורה אחת.");
+      return;
+    }
+    setError(null);
+    const next = buildShiftAnalysis(cleanedTasks, actualDrivenKmValue, costPerKmValue, sessions);
+    setTasks(cleanedTasks);
+    setConfirmedAnalysis(next);
+  };
+
   return (
     <main className="space-y-4">
       <ScreenHeader title="ניתוח צילומי מסך" subtitle="העלה צילומים מאפליקציית Wolt וקבל תמונת משמרת" />
@@ -261,102 +324,222 @@ function ScreenshotAnalyzerContent() {
       {tasks.length > 0 ? (
         <>
           <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-            <p className="text-sm font-bold text-slate-200">תיקון ידני אחרי OCR</p>
-            <div className="mt-3 space-y-2">
-              {tasks.map((task) => (
-                <div key={task.id} className="rounded-xl border border-slate-800 bg-slate-950 p-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      value={task.restaurant}
-                      onChange={(e) => updateTask(task.id, { restaurant: e.target.value })}
-                      placeholder="מסעדה"
-                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
-                    />
-                    <input
-                      value={task.time ?? ""}
-                      onChange={(e) => updateTask(task.id, { time: e.target.value || undefined })}
-                      placeholder="שעה (HH:mm)"
-                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
-                    />
-                    <input
-                      value={task.distanceKm ?? ""}
-                      onChange={(e) => updateTask(task.id, { distanceKm: toOptionalNumber(e.target.value) })}
-                      placeholder="מרחק ק״מ"
-                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
-                    />
-                    <input
-                      value={task.amountIls}
-                      onChange={(e) => {
-                        const next = toNumber(e.target.value);
-                        if (next !== null) updateTask(task.id, { amountIls: next });
-                      }}
-                      placeholder="סכום ₪"
-                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
-                    />
-                    <input
-                      value={task.deliveriesCount}
-                      onChange={(e) => {
-                        const next = toNumber(e.target.value);
-                        if (next !== null) updateTask(task.id, { deliveriesCount: Math.max(1, Math.round(next)) });
-                      }}
-                      placeholder="מספר משלוחים"
-                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
-                    />
-                    <input
-                      value={task.area ?? ""}
-                      onChange={(e) => updateTask(task.id, { area: e.target.value || undefined })}
-                      placeholder="אזור / עיר"
-                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
-                    />
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-slate-200">Sessions / הפסקות</p>
+              <button
+                type="button"
+                onClick={addSession}
+                className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-200"
+              >
+                הוסף מקטע עבודה
+              </button>
             </div>
-          </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-            <p className="text-sm font-bold text-slate-200">חישוב נטו לפי ק״מ אמיתי</p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <input
-                value={actualDrivenKm}
-                onChange={(e) => setActualDrivenKm(e.target.value)}
-                placeholder="ק״מ בפועל"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-              />
-              <input
-                value={costPerKm}
-                onChange={(e) => setCostPerKm(e.target.value)}
-                placeholder="עלות לק״מ"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-              />
-            </div>
-          </section>
-
-          <section className="grid grid-cols-2 gap-3 rounded-2xl border border-emerald-500/30 bg-slate-900 p-4">
-            <Metric label="Gross income" value={formatCurrency(analysis.grossIncome)} />
-            <Metric label="Net income" value={formatMaybeCurrency(analysis.estimatedNetIncome)} />
-            <Metric label="Tasks" value={String(analysis.taskCount)} />
-            <Metric label="Real deliveries" value={String(analysis.deliveryCount)} />
-            <Metric label="Duration" value={formatDuration(analysis.estimatedDurationHours)} />
-            <Metric label="Actual driven km" value={actualDrivenKmValue !== undefined ? String(actualDrivenKmValue) : "-"} />
-            <Metric label="Gross/hour" value={formatMaybeCurrency(analysis.grossPerHour)} />
-            <Metric label="Net/hour" value={formatMaybeCurrency(analysis.estimatedNetPerHour)} />
-            <Metric label="Gross/km" value={analysis.grossPerKm !== undefined ? `₪${analysis.grossPerKm.toFixed(2)}` : "-"} />
-            <Metric label="Rating" value={`${analysis.rating}/10`} />
-          </section>
-
-          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-            <p className="text-sm font-bold text-slate-200">Insights</p>
-            {analysis.insights.length === 0 ? (
-              <p className="mt-2 text-xs text-slate-400">אין מספיק נתונים ליצירת תובנות.</p>
+            {sessions.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-400">לא הוגדרו מקטעים עדיין. ניתן לחשב לפי זמני משלוחים בלבד, אבל עדיף להגדיר מקטעים.</p>
             ) : (
-              <ul className="mt-2 space-y-1 text-sm text-slate-200">
-                {analysis.insights.map((insight) => (
-                  <li key={insight}>- {insight}</li>
+              <div className="mt-3 space-y-2">
+                {sessions.map((session, index) => (
+                  <div key={session.id} className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                    <p className="text-xs font-bold text-slate-300">מקטע {index + 1}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1 block text-[11px] text-slate-400">תחילת מקטע</label>
+                        <input
+                          type="time"
+                          value={session.startTime}
+                          onChange={(e) => updateSession(session.id, { startTime: e.target.value })}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] text-slate-400">סיום מקטע</label>
+                        <input
+                          type="time"
+                          value={session.endTime}
+                          onChange={(e) => updateSession(session.id, { endTime: e.target.value })}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <label className="flex items-center gap-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={session.isNextDay || session.endsNextDay || false}
+                          onChange={(e) => updateSession(session.id, { isNextDay: e.target.checked })}
+                        />
+                        מסתיים ביום הבא
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeSession(session.id)}
+                        className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] font-bold text-rose-100"
+                      >
+                        הסר
+                      </button>
+                    </div>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
+
+            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+              <p className="rounded-lg bg-slate-950 px-2 py-2 text-slate-300">מספר מקטעים: {sessions.length}</p>
+              <p className="rounded-lg bg-slate-950 px-2 py-2 text-slate-300">זמן עבודה נטו: {formatDuration(sessionSummary.activeWorkHours)}</p>
+              <p className="rounded-lg bg-slate-950 px-2 py-2 text-slate-300">זמן הפסקות: {formatDuration(sessionSummary.breakHours)}</p>
+            </div>
+
+            {sessionIssues.length > 0 ? (
+              <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-100">
+                {sessionIssues.map((issue) => (
+                  <p key={issue}>- {issue}</p>
+                ))}
+              </div>
+            ) : null}
           </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-slate-200">תיקון OCR לפני חישוב</p>
+              <button
+                type="button"
+                onClick={addManualTaskRow}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1 text-xs font-bold text-slate-200"
+              >
+                הוסף שורה ידנית
+              </button>
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[680px] border-collapse text-xs">
+                <thead>
+                  <tr className="text-slate-400">
+                    <th className="border-b border-slate-800 p-2 text-right">restaurant</th>
+                    <th className="border-b border-slate-800 p-2 text-right">time</th>
+                    <th className="border-b border-slate-800 p-2 text-right">distance (km)</th>
+                    <th className="border-b border-slate-800 p-2 text-right">amount (₪)</th>
+                    <th className="border-b border-slate-800 p-2 text-right">deliveries count</th>
+                    <th className="border-b border-slate-800 p-2 text-right">פעולות</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.map((task) => (
+                    <tr key={task.id}>
+                      <td className="border-b border-slate-900 p-2">
+                        <input
+                          value={task.restaurant}
+                          onChange={(e) => updateTask(task.id, { restaurant: e.target.value })}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
+                        />
+                      </td>
+                      <td className="border-b border-slate-900 p-2">
+                        <input
+                          value={task.time ?? ""}
+                          onChange={(e) => updateTask(task.id, { time: e.target.value || undefined })}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
+                        />
+                      </td>
+                      <td className="border-b border-slate-900 p-2">
+                        <input
+                          value={task.distanceKm ?? ""}
+                          onChange={(e) => updateTask(task.id, { distanceKm: toOptionalNumber(e.target.value) })}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
+                        />
+                      </td>
+                      <td className="border-b border-slate-900 p-2">
+                        <input
+                          value={task.amountIls}
+                          onChange={(e) => updateTask(task.id, { amountIls: toNumber(e.target.value) ?? 0 })}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
+                        />
+                      </td>
+                      <td className="border-b border-slate-900 p-2">
+                        <input
+                          value={task.deliveriesCount}
+                          onChange={(e) => {
+                            const next = toNumber(e.target.value);
+                            if (next !== null) updateTask(task.id, { deliveriesCount: Math.max(1, Math.round(next)) });
+                          }}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
+                        />
+                      </td>
+                      <td className="border-b border-slate-900 p-2">
+                        <button
+                          type="button"
+                          onClick={() => deleteTask(task.id)}
+                          className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] font-bold text-rose-100"
+                        >
+                          מחק
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button
+              type="button"
+              onClick={calculateShift}
+              disabled={tasks.length === 0}
+              className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60"
+            >
+              חשב משמרת
+            </button>
+          </section>
+
+          {confirmedAnalysis ? (
+            <>
+              <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+                <p className="text-sm font-bold text-slate-200">חישוב נטו לפי ק״מ אמיתי</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <input
+                    value={actualDrivenKm}
+                    onChange={(e) => setActualDrivenKm(e.target.value)}
+                    placeholder="ק״מ בפועל"
+                    className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+                  />
+                  <input
+                    value={costPerKm}
+                    onChange={(e) => setCostPerKm(e.target.value)}
+                    placeholder="עלות לק״מ"
+                    className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+                  />
+                </div>
+              </section>
+
+              <section className="grid grid-cols-2 gap-3 rounded-2xl border border-emerald-500/30 bg-slate-900 p-4">
+                <Metric label="Gross income" value={formatCurrency(confirmedAnalysis.grossIncome)} />
+                <Metric label="Net income" value={formatMaybeCurrency(confirmedAnalysis.estimatedNetIncome)} />
+                <Metric label="Tasks" value={String(confirmedAnalysis.taskCount)} />
+                <Metric label="Real deliveries" value={String(confirmedAnalysis.deliveryCount)} />
+                <Metric label="Duration" value={formatDuration(confirmedAnalysis.estimatedDurationHours)} />
+                <Metric label="Net work time" value={formatDuration(confirmedAnalysis.activeWorkHours)} />
+                <Metric label="Break time" value={formatDuration(confirmedAnalysis.breakHours)} />
+                <Metric label="Actual driven km" value={actualDrivenKmValue !== undefined ? String(actualDrivenKmValue) : "-"} />
+                <Metric label="Gross/hour" value={formatMaybeCurrency(confirmedAnalysis.grossPerHour)} />
+                <Metric label="Net/hour" value={formatMaybeCurrency(confirmedAnalysis.estimatedNetPerHour)} />
+                <Metric label="Gross/km" value={confirmedAnalysis.grossPerKm !== undefined ? `₪${confirmedAnalysis.grossPerKm.toFixed(2)}` : "-"} />
+                <Metric label="Rating" value={`${confirmedAnalysis.rating}/10`} />
+              </section>
+
+              <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+                <p className="text-sm font-bold text-slate-200">Insights</p>
+                {confirmedAnalysis.insights.length === 0 ? (
+                  <p className="mt-2 text-xs text-slate-400">אין מספיק נתונים ליצירת תובנות.</p>
+                ) : (
+                  <ul className="mt-2 space-y-1 text-sm text-slate-200">
+                    {confirmedAnalysis.insights.map((insight) => (
+                      <li key={insight}>- {insight}</li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </>
+          ) : (
+            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-xs text-slate-400">
+              ערוך את הטבלה ואז לחץ על <strong>חשב משמרת</strong> כדי לראות תוצאות.
+            </section>
+          )}
         </>
       ) : null}
 

@@ -12,7 +12,7 @@ import {
   usePreferredZonesStorage,
   useShiftsStorage
 } from "@/hooks/storage";
-import type { AppSettings, Delivery, DeliveryCompletionInput, FuelSettings, QuickCheckInput, Shift } from "@/types/models";
+import type { AppSettings, Delivery, DeliveryCompletionInput, FuelSettings, QuickCheckInput, Shift, ShiftSession } from "@/types/models";
 
 type AppDataContextType = {
   deliveries: Delivery[];
@@ -25,6 +25,8 @@ type AppDataContextType = {
   runQuickCheck: (input: QuickCheckInput) => ReturnType<typeof calculateQuickCheck>;
   startShift: () => void;
   endShift: () => void;
+  updateActiveShiftExpenses: (payload: { actualDrivenKm?: number; costPerKm?: number }) => void;
+  updateActiveShiftSessions: (sessions: ShiftSession[]) => void;
   acceptQuickCheck: (input: QuickCheckInput) => void;
   addManualCompletedDelivery: (input: QuickCheckInput, completion: DeliveryCompletionInput) => void;
   markPickedUp: () => void;
@@ -49,7 +51,8 @@ function ensureTodayShift(shifts: Shift[]): Shift {
     dateKey: today,
     startedAt: new Date().toISOString(),
     deliveryIds: [],
-    idleTimeEstimateMinutes: 0
+    idleTimeEstimateMinutes: 0,
+    sessions: []
   };
 }
 
@@ -94,7 +97,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       dateKey: dateKey(new Date().toISOString()),
       startedAt: new Date().toISOString(),
       deliveryIds: [],
-      idleTimeEstimateMinutes: 0
+      idleTimeEstimateMinutes: 0,
+      sessions: []
     };
     shiftsStore.setValue([shift, ...shiftsStore.state]);
     appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: shift.id });
@@ -106,6 +110,47 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       shiftsStore.state.map((shift) => (shift.id === current.id ? { ...shift, endedAt: new Date().toISOString() } : shift))
     );
     appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: null, activeDeliveryId: null });
+  };
+
+  const updateActiveShiftExpenses = (payload: { actualDrivenKm?: number; costPerKm?: number }) => {
+    const current = getCurrentShift(shiftsStore.state, appSettingsStore.state.activeShiftId);
+    const hasCurrent = shiftsStore.state.some((shift) => shift.id === current.id);
+    if (!hasCurrent) {
+      shiftsStore.setValue([
+        {
+          ...current,
+          actualDrivenKm: payload.actualDrivenKm,
+          costPerKm: payload.costPerKm
+        },
+        ...shiftsStore.state
+      ]);
+      appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: current.id });
+      return;
+    }
+    shiftsStore.setValue(
+      shiftsStore.state.map((shift) =>
+        shift.id === current.id
+          ? {
+              ...shift,
+              actualDrivenKm: payload.actualDrivenKm,
+              costPerKm: payload.costPerKm
+            }
+          : shift
+      )
+    );
+  };
+
+  const updateActiveShiftSessions = (sessions: ShiftSession[]) => {
+    const current = getCurrentShift(shiftsStore.state, appSettingsStore.state.activeShiftId);
+    const hasCurrent = shiftsStore.state.some((shift) => shift.id === current.id);
+    if (!hasCurrent) {
+      shiftsStore.setValue([{ ...current, sessions }, ...shiftsStore.state]);
+      appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: current.id });
+      return;
+    }
+    shiftsStore.setValue(
+      shiftsStore.state.map((shift) => (shift.id === current.id ? { ...shift, sessions } : shift))
+    );
   };
 
   const acceptQuickCheck = (input: QuickCheckInput) => {
@@ -253,6 +298,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     runQuickCheck,
     startShift,
     endShift,
+    updateActiveShiftExpenses,
+    updateActiveShiftSessions,
     acceptQuickCheck,
     addManualCompletedDelivery,
     markPickedUp,

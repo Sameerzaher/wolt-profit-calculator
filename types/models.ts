@@ -64,6 +64,9 @@ export interface Shift {
   endedAt?: string;
   deliveryIds: string[];
   idleTimeEstimateMinutes: number;
+  actualDrivenKm?: number;
+  costPerKm?: number;
+  sessions?: ShiftSession[];
 }
 
 export interface ZoneStats {
@@ -118,10 +121,25 @@ export interface ShiftAnalysis {
   estimatedNetPerHour?: number;
   rating: number;
   insights: string[];
+  sessionCount?: number;
+  activeWorkHours?: number;
+  breakHours?: number;
+  sessionStartTime?: string;
+  sessionEndTime?: string;
+  hasLongWorkWarning?: boolean;
+}
+
+export interface ShiftSession {
+  id: string;
+  startTime: string;
+  endTime: string;
+  isNextDay: boolean;
+  endsNextDay?: boolean;
 }
 
 export interface ScreenshotAnalysisSnapshot {
   shiftDate: string;
+  sessions: ShiftSession[];
   tasks: DeliveryTask[];
   rawTexts: string[];
   ocrDetectedDate?: string;

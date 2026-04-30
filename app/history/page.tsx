@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import ScreenHeader from "@/components/ScreenHeader";
 import { deleteShiftAnalysisByDate, listAllShiftAnalyses } from "@/lib/storage";
 import type { ScreenshotAnalysisSnapshot } from "@/types/models";
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [items, setItems] = useState<ScreenshotAnalysisSnapshot[]>([]);
 
   useEffect(() => {
@@ -52,11 +54,17 @@ export default function HistoryPage() {
       ) : (
         <section className="space-y-3">
           {sortedItems.map((item) => (
-            <article key={item.shiftDate} className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <article
+              key={item.shiftDate}
+              onClick={() => router.push(`/screenshot-analyzer?date=${item.shiftDate}`)}
+              className="cursor-pointer rounded-2xl border border-slate-800 bg-slate-900 p-4"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-black text-white">{item.shiftDate}</p>
-                  <p className="text-xs text-slate-400">משימות: {item.analysis.taskCount} | משלוחים: {item.analysis.deliveryCount}</p>
+                  <p className="text-xs text-slate-400">
+                    משימות: {item.analysis.taskCount} | משלוחים: {item.analysis.deliveryCount} | מספר מקטעים: {item.sessions?.length ?? 0}
+                  </p>
                 </div>
                 <p className="rounded-lg bg-emerald-500/15 px-2 py-1 text-xs font-black text-emerald-200">
                   {item.analysis.rating}/10
@@ -66,24 +74,24 @@ export default function HistoryPage() {
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-200">
                 <p>ברוטו: ₪{item.analysis.grossIncome.toFixed(2)}</p>
                 <p>נטו: {item.analysis.estimatedNetIncome !== undefined ? `₪${item.analysis.estimatedNetIncome.toFixed(2)}` : "-"}</p>
-                <p>שעות: {item.analysis.estimatedDurationHours?.toFixed(2) ?? "-"}</p>
+                <p>שעות: {item.analysis.activeWorkHours?.toFixed(2) ?? item.analysis.estimatedDurationHours?.toFixed(2) ?? "-"}</p>
                 <p>ק״מ: {item.actualDrivenKm ?? item.analysis.totalOfferKm}</p>
                 <p>₪/שעה: {item.analysis.grossPerHour !== undefined ? `₪${item.analysis.grossPerHour.toFixed(2)}` : "-"}</p>
                 <p>₪/ק״מ: {item.analysis.grossPerKm !== undefined ? `₪${item.analysis.grossPerKm.toFixed(2)}` : "-"}</p>
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="mt-3 grid grid-cols-3 gap-2" onClick={(event) => event.stopPropagation()}>
                 <Link
                   href={`/screenshot-analyzer?date=${item.shiftDate}`}
                   className="flex min-h-[2.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xs font-bold text-slate-200"
                 >
-                  פתח/ערוך
+                  פתח משמרת
                 </Link>
                 <Link
                   href={`/screenshot-analyzer?date=${item.shiftDate}`}
                   className="flex min-h-[2.5rem] items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-xs font-bold text-emerald-200"
                 >
-                  הוסף צילומים
+                  ערוך
                 </Link>
                 <button
                   type="button"
