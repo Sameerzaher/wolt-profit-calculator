@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function useLocalStorageState<T>(key: string, initialValue: T) {
   const [state, setState] = useState<T>(initialValue);
   const [isHydrated, setIsHydrated] = useState(false);
+  const initialRef = useRef(initialValue);
+  initialRef.current = initialValue;
 
   useEffect(() => {
     try {
@@ -13,11 +15,11 @@ export function useLocalStorageState<T>(key: string, initialValue: T) {
         setState(JSON.parse(raw) as T);
       }
     } catch {
-      setState(initialValue);
+      setState(initialRef.current);
     } finally {
       setIsHydrated(true);
     }
-  }, [initialValue, key]);
+  }, [key]);
 
   const setValue = useCallback(
     (value: T | ((current: T) => T)) => {

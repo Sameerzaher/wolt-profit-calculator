@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { DEFAULT_APP_SETTINGS, DEFAULT_FUEL_SETTINGS } from "@/lib/constants";
 import { createDemoData } from "@/lib/demoData";
 import { calculateFuelCost, calculateQuickCheck } from "@/lib/scoring";
@@ -73,12 +73,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const appSettingsStore = useAppSettingsStorage();
   const fuelSettingsStore = useFuelSettingsStorage();
 
-  const isHydrated =
+  const storesHydrated =
     deliveriesStore.isHydrated &&
     shiftsStore.isHydrated &&
     preferredZonesStore.isHydrated &&
     appSettingsStore.isHydrated &&
     fuelSettingsStore.isHydrated;
+
+  const [hydrationFallback, setHydrationFallback] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrationFallback(true), 1500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const isHydrated = storesHydrated || hydrationFallback;
 
   const activeDelivery =
     deliveriesStore.state.find((delivery) => delivery.id === appSettingsStore.state.activeDeliveryId) ?? null;

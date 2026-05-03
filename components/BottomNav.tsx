@@ -7,7 +7,7 @@ const navItems = [
   { href: "/", label: "בית" },
   { href: "/quick-check", label: "בדיקה" },
   { href: "/active-shift", label: "משמרת" },
-  { href: "/screenshot-analyzer", label: "OCR" },
+  { href: "/screenshot-analyzer", label: "צילומים" },
   { href: "/where-to-go", label: "לאן" },
   { href: "/insights", label: "תובנות" },
   { href: "/history", label: "היסטוריה" },

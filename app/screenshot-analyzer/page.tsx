@@ -1,10 +1,16 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import ScreenHeader from "@/components/ScreenHeader";
-import { buildShiftAnalysis, dedupeTasks, detectShiftDateFromText, parseTasksFromOcrText, summarizeSessions, validateSessions } from "@/features/screenshot-analyzer/analysis";
+import {
+  buildShiftAnalysis,
+  dedupeTasks,
+  detectShiftDateFromText,
+  parseTasksFromOcrText,
+  summarizeSessions,
+  summarizeTasksForOcrPreview,
+  validateSessions
+} from "@/features/screenshot-analyzer/analysis";
 import { readShiftAnalysisByDate, saveShiftAnalysisByDate } from "@/lib/storage";
 import EditableOcrTable from "@/src/components/ocr/EditableOcrTable";
 import { getTodayDateInput } from "@/src/lib/dateTime";
@@ -30,19 +36,20 @@ type PendingOcrBatch = {
 const DEFAULT_COST_PER_KM = 0.7;
 
 export default function ScreenshotAnalyzerPage() {
-  return (
-    <Suspense fallback={<p className="text-sm text-slate-400">טוען מנתח צילומים...</p>}>
-      <ScreenshotAnalyzerContent />
-    </Suspense>
-  );
-}
-
-function ScreenshotAnalyzerContent() {
-  const searchParams = useSearchParams();
   const today = getTodayDateInput();
-  const initialDate = searchParams.get("date") ?? today;
+  const [shiftDate, setShiftDate] = useState(today);
 
-  const [shiftDate, setShiftDate] = useState(initialDate);
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get("date");
+      if (fromUrl && /^\d{4}-\d{2}-\d{2}$/.test(fromUrl)) {
+        setShiftDate(fromUrl);
+      }
+    } catch {
+      // ignore invalid URL access
+    }
+  }, []);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [rawTexts, setRawTexts] = useState<string[]>([]);
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
@@ -59,25 +66,35 @@ function ScreenshotAnalyzerContent() {
   const [pendingBatch, setPendingBatch] = useState<PendingOcrBatch | null>(null);
 
   useEffect(() => {
-    const snapshot = readShiftAnalysisByDate(shiftDate);
-    if (!snapshot) {
+    setError(null);
+    try {
+      const snapshot = readShiftAnalysisByDate(shiftDate);
+      if (!snapshot) {
+        setTasks([]);
+        setSessions([]);
+        setRawTexts([]);
+        setSuggestedDate(null);
+        setActualDrivenKm("");
+        setCostPerKm(String(DEFAULT_COST_PER_KM));
+        setCreatedAt(new Date().toISOString());
+        setConfirmedAnalysis(null);
+        return;
+      }
+      setTasks(snapshot.tasks ?? []);
+      setSessions(snapshot.sessions ?? []);
+      setRawTexts(snapshot.rawTexts ?? []);
+      setSuggestedDate(snapshot.ocrDetectedDate ?? null);
+      setActualDrivenKm(snapshot.actualDrivenKm !== undefined ? String(snapshot.actualDrivenKm) : "");
+      setCostPerKm(String(snapshot.costPerKm ?? DEFAULT_COST_PER_KM));
+      setCreatedAt(snapshot.createdAt);
+      setConfirmedAnalysis(snapshot.analysis ?? null);
+    } catch {
+      setError("שגיאה בטעינת משמרת שמורה. נסו לבחור תאריך אחר.");
       setTasks([]);
       setSessions([]);
       setRawTexts([]);
-      setSuggestedDate(null);
-      setActualDrivenKm("");
-      setCostPerKm(String(DEFAULT_COST_PER_KM));
-      setCreatedAt(new Date().toISOString());
-      return;
+      setConfirmedAnalysis(null);
     }
-    setTasks(snapshot.tasks);
-    setSessions(snapshot.sessions ?? []);
-    setRawTexts(snapshot.rawTexts);
-    setSuggestedDate(snapshot.ocrDetectedDate ?? null);
-    setActualDrivenKm(snapshot.actualDrivenKm !== undefined ? String(snapshot.actualDrivenKm) : "");
-    setCostPerKm(String(snapshot.costPerKm));
-    setCreatedAt(snapshot.createdAt);
-    setConfirmedAnalysis(snapshot.analysis ?? null);
   }, [shiftDate]);
 
   useEffect(() => {
@@ -93,6 +110,7 @@ function ScreenshotAnalyzerContent() {
 
   const sessionIssues = useMemo(() => validateSessions(sessions), [sessions]);
   const sessionSummary = useMemo(() => summarizeSessions(sessions), [sessions]);
+  const ocrTasksSummary = useMemo(() => summarizeTasksForOcrPreview(tasks), [tasks]);
 
   useEffect(() => {
     if (tasks.length === 0 || !confirmedAnalysis) return;
@@ -197,9 +215,23 @@ function ScreenshotAnalyzerContent() {
       }
 
       setUploads([]);
-    } catch (ocrError) {
+    } catch (ocrError: unknown) {
       console.error(ocrError);
-      setError("שגיאה בזמן OCR. נסה שוב עם תמונות אחרות.");
+      const msg = ocrError instanceof Error ? ocrError.message : String(ocrError);
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes("failed to fetch") ||
+        lower.includes("dynamically imported") ||
+        lower.includes("cannot find module") ||
+        lower.includes("loading chunk") ||
+        lower.includes("chunkloaderror")
+      ) {
+        setError(
+          "לא ניתן לטעון את מנוע ה-OCR (tesseract). בדקו שהאפליקציה נבנתה והותקנו כל החבילות (npm install), או נסו רענון מלא."
+        );
+      } else {
+        setError("שגיאה בזמן OCR. נסה שוב עם תמונות אחרות.");
+      }
     } finally {
       setProgress(null);
       setIsAnalyzing(false);
@@ -288,7 +320,10 @@ function ScreenshotAnalyzerContent() {
 
   return (
     <main className="space-y-4">
-      <ScreenHeader title="ניתוח צילומי מסך" subtitle="העלה צילומים מאפליקציית Wolt וקבל תמונת משמרת" />
+      <ScreenHeader
+        title="ניתוח צילומי מסך"
+        subtitle="העלאה רטרואקטיבית של כמה צילומים, תיקון ידני לפני שמירה, והיסטוריה לפי תאריך משמרת"
+      />
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
         <label className="mb-2 block text-sm font-bold text-slate-200">תאריך המשמרת</label>
@@ -314,13 +349,13 @@ function ScreenshotAnalyzerContent() {
       </section>
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <label className="mb-2 block text-sm font-bold text-slate-200">העלאת צילומים</label>
+        <label className="mb-2 block text-sm font-bold text-slate-200">העלאת צילומים (כמה בבת אחת)</label>
         <input
           type="file"
           accept="image/*"
           multiple
           onChange={onPickFiles}
-          className="block w-full rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-slate-200 file:ml-3 file:rounded-lg file:border-0 file:bg-emerald-500 file:px-3 file:py-2 file:text-xs file:font-bold file:text-slate-950"
+          className="block w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-emerald-500 file:px-4 file:py-3 file:text-sm file:font-black file:text-slate-950"
         />
         <p className="mt-2 text-xs text-slate-400">
           {uploads.length > 0 ? `${uploads.length} תמונות נבחרו` : "לא נבחרו תמונות עדיין"}
@@ -332,7 +367,8 @@ function ScreenshotAnalyzerContent() {
           <div className="mt-3 grid grid-cols-2 gap-2">
             {uploads.map((item) => (
               <div key={item.id} className="relative overflow-hidden rounded-lg border border-slate-700">
-                <Image src={item.previewUrl} alt={item.file.name} width={200} height={96} className="h-24 w-full object-cover" />
+                {/* eslint-disable-next-line @next/next/no-img-element -- blob: previews are not supported reliably by next/image */}
+                <img src={item.previewUrl} alt={item.file.name} className="h-24 w-full object-cover" />
                 <button
                   type="button"
                   onClick={() => removeUpload(item.id)}
@@ -349,9 +385,9 @@ function ScreenshotAnalyzerContent() {
           type="button"
           onClick={analyzeScreenshots}
           disabled={uploads.length === 0 || isAnalyzing}
-          className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60"
+          className="mt-4 min-h-[3.5rem] w-full rounded-2xl bg-emerald-500 px-4 py-3 text-base font-black text-slate-950 disabled:opacity-60"
         >
-          {isAnalyzing ? "מנתח צילומים..." : "Analyze screenshots"}
+          {isAnalyzing ? "מנתח צילומים..." : "נתח צילומים"}
         </button>
 
         {progress ? (
@@ -392,6 +428,27 @@ function ScreenshotAnalyzerContent() {
 
       {tasks.length > 0 ? (
         <>
+          <section className="rounded-2xl border border-sky-500/30 bg-slate-900 p-4">
+            <p className="text-sm font-bold text-slate-100">מה שחולץ מהצילומים</p>
+            <p className="mt-1 text-xs text-slate-400">בדקו ותקנו בטבלה למטה לפני חישוב ושמירה להיסטוריה.</p>
+            <ul className="mt-3 space-y-1 text-sm text-slate-200">
+              {ocrTasksSummary.timeRangeLabel ? (
+                <li>
+                  טווח שעות במשימות (משוער): <strong>{ocrTasksSummary.timeRangeLabel}</strong>
+                </li>
+              ) : (
+                <li className="text-slate-400">לא זוהו שעות ברורות — ניתן להזין ידנית בטבלה.</li>
+              )}
+              <li>
+                סכום הכנסות (משימות): <strong>₪{ocrTasksSummary.grossSum.toFixed(2)}</strong>
+              </li>
+              <li>
+                משימות: <strong>{ocrTasksSummary.taskCount}</strong> · משלוחים (כולל כפולים):{" "}
+                <strong>{ocrTasksSummary.deliveryCount}</strong>
+              </li>
+            </ul>
+          </section>
+
           <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold text-slate-200">מקטעי עבודה</p>
@@ -478,9 +535,9 @@ function ScreenshotAnalyzerContent() {
             type="button"
             onClick={calculateShift}
             disabled={tasks.length === 0}
-            className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60"
+            className="min-h-[3.5rem] w-full rounded-2xl bg-emerald-500 px-4 py-3 text-base font-black text-slate-950 disabled:opacity-60"
           >
-            חשב משמרת
+            חשב משמרת ושמור לפי התאריך
           </button>
 
           {confirmedAnalysis ? (
@@ -508,17 +565,17 @@ function ScreenshotAnalyzerContent() {
                 <Metric label="עלות רכב" value={formatCurrency(confirmedAnalysis.vehicleCost)} />
                 <Metric label="רווח נטו" value={formatCurrency(confirmedAnalysis.netIncome)} />
                 <Metric label="נטו לשעה" value={formatMaybeCurrency(confirmedAnalysis.netPerHour)} />
-                <Metric label="₪ לק״מ" value={confirmedAnalysis.netPerKm !== undefined ? `₪${confirmedAnalysis.netPerKm.toFixed(2)}` : "-"} />
+                <Metric label="נטו לק״מ" value={confirmedAnalysis.netPerKm !== undefined ? `₪${confirmedAnalysis.netPerKm.toFixed(2)}` : "-"} />
                 <Metric label="ק״מ אמיתי" value={actualDrivenKmValue !== undefined ? String(actualDrivenKmValue) : "-"} />
                 <Metric label="ברוטו לשעה" value={formatMaybeCurrency(confirmedAnalysis.grossPerHour)} />
                 <Metric label="ברוטו לק״מ" value={confirmedAnalysis.grossPerKm !== undefined ? `₪${confirmedAnalysis.grossPerKm.toFixed(2)}` : "-"} />
                 <Metric label="זמן עבודה נטו" value={formatDuration(confirmedAnalysis.activeHours)} />
                 <Metric label="זמן הפסקות" value={formatDuration(confirmedAnalysis.breakHours)} />
-                <Metric label="Rating" value={`${confirmedAnalysis.rating}/10`} />
+                <Metric label="דירוג" value={`${confirmedAnalysis.rating}/10`} />
               </section>
 
               <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-                <p className="text-sm font-bold text-slate-200">Insights</p>
+                <p className="text-sm font-bold text-slate-200">תובנות</p>
                 {confirmedAnalysis.insights.length === 0 ? (
                   <p className="mt-2 text-xs text-slate-400">אין מספיק נתונים ליצירת תובנות.</p>
                 ) : (
@@ -544,7 +601,7 @@ function ScreenshotAnalyzerContent() {
           onClick={() => setShowDebug((prev) => !prev)}
           className="text-sm font-bold text-slate-200"
         >
-          {showDebug ? "הסתר טקסט OCR גולמי" : "הצג טקסט OCR גולמי (Debug)"}
+          {showDebug ? "הסתר טקסט גולמי מהסריקה" : "הצג טקסט גולמי מהסריקה (למתקדמים)"}
         </button>
         {showDebug ? (
           rawTexts.length === 0 ? (

@@ -39,7 +39,9 @@ export default function ActiveShiftPage() {
   const grossPerHour = calculateRatePerHour(grossIncome, activeWorkHours) ?? 0;
   const netPerHour = calculateRatePerHour(netIncome, activeWorkHours) ?? 0;
   const grossPerKm = calculateRatePerKm(grossIncome, actualKm);
+  const netPerKm = calculateRatePerKm(netIncome, actualKm);
   const canUseSessionHours = sessionSummary.activeWorkHours !== undefined;
+  const profitAfterDeliveryFuel = grossIncome - shift.estimatedFuelCost;
 
   const wastedOrdersToday = deliveries.filter(
     (delivery) => delivery.status === "completed" && new Date(delivery.acceptedAt).toDateString() === new Date().toDateString() && isBadOrder(delivery)
@@ -60,7 +62,15 @@ export default function ActiveShiftPage() {
   };
 
   const onUpdateSession = (id: string, patch: Partial<AppShiftSession>) => {
-    const next = sessions.map((session) => (session.id === id ? { ...session, ...patch } : session));
+    const current = sessions.find((s) => s.id === id);
+    if (!current) return;
+    let updated = { ...current, ...patch };
+    const sm = timeToMinutes(updated.startTime);
+    const em = timeToMinutes(updated.endTime);
+    if (sm !== null && em !== null && em < sm) {
+      updated = { ...updated, isNextDay: true };
+    }
+    const next = sessions.map((session) => (session.id === id ? updated : session));
     setSessions(next);
     if (activeShift) updateActiveShiftSessions(next);
   };
@@ -104,9 +114,28 @@ export default function ActiveShiftPage() {
         </p>
       </section>
 
+      <section className="rounded-2xl border border-emerald-500/25 bg-slate-900 p-4">
+        <p className="text-sm font-bold text-slate-100">דלק ורווח לפי משלוחים שהושלמו</p>
+        <p className="mt-1 text-xs text-slate-400">מבוסס על ק״מ בפועל מכל משלוח והגדרות הדלק במסך ההגדרות</p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[11px] text-slate-400">הכנסה ברוטו (משלוחים)</p>
+            <p className="mt-1 text-lg font-black text-emerald-300">₪{grossIncome.toFixed(0)}</p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[11px] text-slate-400">עלות דלק משוערת</p>
+            <p className="mt-1 text-lg font-black text-amber-200">₪{shift.estimatedFuelCost.toFixed(1)}</p>
+          </div>
+          <div className="col-span-2 rounded-xl border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[11px] text-slate-400">רווח אחרי דלק (משלוחים)</p>
+            <p className="mt-1 text-lg font-black text-white">₪{profitAfterDeliveryFuel.toFixed(1)}</p>
+          </div>
+        </div>
+      </section>
+
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-bold text-slate-200">מקטעי עבודה</p>
+          <p className="text-sm font-bold text-slate-200">מקטעי עבודה והפסקות</p>
           <button
             type="button"
             onClick={onAddSession}
@@ -116,8 +145,13 @@ export default function ActiveShiftPage() {
           </button>
         </div>
 
+        <p className="mt-2 text-xs text-slate-400">
+          כל מקטע הוא זמן עבודה רצוף. <strong className="text-slate-300">הזמן שבין מקטעים</strong> נספר אוטומטית כהפסקה. אם
+          הסיום לפני ההתחלה באותו יום — המערכת מסמנת מעבר ליום הבא (משמרת לילה).
+        </p>
+
         {sessions.length === 0 ? (
-          <p className="mt-3 text-xs text-slate-400">לא הוגדרו מקטעים עדיין.</p>
+          <p className="mt-3 text-xs text-slate-400">לא הוגדרו מקטעים — הוסיפו מקטעים לכל יציאה לכביש כדי לחשב ₪ לשעה מדויק.</p>
         ) : (
           <div className="mt-3 space-y-2">
             {sessions.map((session, index) => (
@@ -225,20 +259,31 @@ export default function ActiveShiftPage() {
         grossPerHour={canUseSessionHours ? grossPerHour : 0}
         netPerHour={canUseSessionHours ? netPerHour : 0}
         grossPerKm={grossPerKm}
+        netPerKm={netPerKm}
       />
+
+      {!canUseSessionHours ? (
+        <p className="text-center text-xs text-amber-200/90">הגדירו מקטעי עבודה למעלה כדי לראות ברוטו/נטו לשעה לפי זמן פעיל אמיתי.</p>
+      ) : null}
 
       <section className="fixed inset-x-0 bottom-[4.6rem] z-20 px-3">
         <div className="mx-auto grid max-w-lg grid-cols-3 gap-2 rounded-2xl border border-slate-700 bg-slate-950/95 p-3 backdrop-blur">
-          <Link href="/quick-check" className="flex min-h-[3.6rem] items-center justify-center rounded-xl bg-emerald-500 text-sm font-black text-slate-950">
-            בדוק משלוח
+          <Link
+            href="/quick-check"
+            className="flex min-h-[4rem] items-center justify-center rounded-xl bg-emerald-500 text-base font-black text-slate-950"
+          >
+            בדיקת הצעה
           </Link>
-          <Link href="/add-delivery" className="flex min-h-[3.6rem] items-center justify-center rounded-xl border border-slate-600 bg-slate-900 text-sm font-black text-white">
+          <Link
+            href="/add-delivery"
+            className="flex min-h-[4rem] items-center justify-center rounded-xl border-2 border-emerald-500/50 bg-slate-900 text-base font-black text-emerald-100"
+          >
             הוסף משלוח
           </Link>
           <button
             type="button"
             onClick={endShift}
-            className="min-h-[3.6rem] rounded-xl border border-rose-500/40 bg-rose-500/20 text-sm font-black text-rose-100"
+            className="min-h-[4rem] rounded-xl border-2 border-rose-500/50 bg-rose-500/20 text-base font-black text-rose-100"
           >
             סיים משמרת
           </button>
@@ -258,4 +303,10 @@ function toOptionalNumber(value: string): number | undefined {
 function formatHours(value: number | undefined): string {
   if (value === undefined) return "-";
   return `${value.toFixed(2)} שעות`;
+}
+
+function timeToMinutes(value: string): number | null {
+  const match = value.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
 }

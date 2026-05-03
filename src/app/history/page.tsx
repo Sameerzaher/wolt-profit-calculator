@@ -7,18 +7,48 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { deleteShiftAnalysisByDate, listAllShiftAnalyses } from "@/lib/storage";
 import type { ScreenshotAnalysisSnapshot } from "@/types/models";
 
+function isRenderableSnapshot(item: ScreenshotAnalysisSnapshot): boolean {
+  const a = item?.analysis;
+  return Boolean(
+    item?.shiftDate &&
+    a &&
+    typeof a.grossIncome === "number" &&
+    typeof a.netIncome === "number" &&
+    typeof a.rating === "number" &&
+    typeof a.activeHours === "number" &&
+    typeof a.netPerHour === "number"
+  );
+}
+
 export default function HistoryPageContent() {
   const router = useRouter();
   const [items, setItems] = useState<ScreenshotAnalysisSnapshot[]>([]);
 
   useEffect(() => {
-    setItems(listAllShiftAnalyses());
+    try {
+      const raw = listAllShiftAnalyses();
+      setItems(raw.filter(isRenderableSnapshot));
+    } catch {
+      setItems([]);
+    }
   }, []);
 
   const hasItems = items.length > 0;
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => b.shiftDate.localeCompare(a.shiftDate)),
     [items]
+  );
+
+  const totals = useMemo(
+    () => ({
+      shifts: sortedItems.length,
+      gross: sortedItems.reduce((s, i) => s + i.analysis.grossIncome, 0),
+      vehicle: sortedItems.reduce((s, i) => s + i.analysis.vehicleCost, 0),
+      net: sortedItems.reduce((s, i) => s + i.analysis.netIncome, 0),
+      hours: sortedItems.reduce((s, i) => s + i.analysis.activeHours, 0),
+      km: sortedItems.reduce((s, i) => s + (i.actualDrivenKm ?? i.analysis.offerDistanceKm), 0)
+    }),
+    [sortedItems]
   );
 
   const onDelete = (shiftDate: string) => {
@@ -49,6 +79,20 @@ export default function HistoryPageContent() {
         </div>
       </section>
 
+      {hasItems ? (
+        <section className="rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm text-slate-200">
+          <p className="font-bold text-white">סה״כ כל השמירות</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <p>משמרות: {totals.shifts}</p>
+            <p>שעות: {totals.hours.toFixed(1)}</p>
+            <p>ברוטו: ₪{totals.gross.toFixed(0)}</p>
+            <p>עלות רכב: ₪{totals.vehicle.toFixed(0)}</p>
+            <p>נטו: ₪{totals.net.toFixed(0)}</p>
+            <p>ק״מ: {totals.km.toFixed(1)}</p>
+          </div>
+        </section>
+      ) : null}
+
       {!hasItems ? (
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-300">
           עדיין אין משמרות שמורות
@@ -75,6 +119,7 @@ export default function HistoryPageContent() {
                 <p>זמן עבודה נטו: {item.analysis.activeHours.toFixed(2)} שעות</p>
                 <p>הכנסה ברוטו: ₪{item.analysis.grossIncome.toFixed(2)}</p>
                 <p>רווח נטו: ₪{item.analysis.netIncome.toFixed(2)}</p>
+                <p>עלות רכב: ₪{item.analysis.vehicleCost.toFixed(2)}</p>
                 <p>ק״מ אמיתי: {item.actualDrivenKm !== undefined ? item.actualDrivenKm : "-"}</p>
                 <p>נטו לשעה: ₪{item.analysis.netPerHour.toFixed(2)}</p>
                 <p>דירוג: {item.analysis.rating}/10</p>

@@ -66,7 +66,7 @@ export function parseTasksFromOcrText(text: string, sourceImageIndex: number): D
 
     tasks.push({
       id: `${sourceImageIndex}-${index}-${Math.random().toString(36).slice(2, 8)}`,
-      restaurant: parsedRestaurant.restaurant ?? "Unknown",
+      restaurant: parsedRestaurant.restaurant ?? "לא ידוע",
       area: parsedRestaurant.area,
       time,
       distanceKm,
@@ -157,6 +157,31 @@ export function buildShiftAnalysis(
     netPerKm,
     rating,
     insights
+  };
+}
+
+/** Quick summary from parsed tasks for UI hints before the user confirms calculations. */
+export function summarizeTasksForOcrPreview(tasks: DeliveryTask[]): {
+  timeRangeLabel: string | null;
+  grossSum: number;
+  taskCount: number;
+  deliveryCount: number;
+} {
+  const grossSum = round2(tasks.reduce((sum, task) => sum + task.amountIls, 0));
+  const taskCount = tasks.length;
+  const deliveryCount = tasks.reduce((sum, task) => sum + Math.max(1, task.deliveriesCount), 0);
+  const taskTimes = tasks.map((task) => task.time).filter((value): value is string => Boolean(value));
+  const sortedMinutes = taskTimes.map(toMinutes).filter((v): v is number => v !== null).sort((a, b) => a - b);
+  if (sortedMinutes.length === 0) {
+    return { timeRangeLabel: null, grossSum, taskCount, deliveryCount };
+  }
+  const first = sortedMinutes[0];
+  const last = sortedMinutes[sortedMinutes.length - 1];
+  return {
+    timeRangeLabel: `${toTimeString(first)}–${toTimeString(last)}`,
+    grossSum,
+    taskCount,
+    deliveryCount
   };
 }
 

@@ -47,7 +47,7 @@ function getBestTimeBlock(tasks: DeliveryTask[]): string | undefined {
     const hour = Number(hourStr);
     if (!Number.isFinite(hour)) continue;
     const startHour = Math.floor(hour / 3) * 3;
-    const label = `${pad2(startHour)}:00-${pad2((startHour + 3) % 24)}:00`;
+    const label = `${pad2(startHour)}:00–${pad2((startHour + 3) % 24)}:00`;
     blocks.set(label, (blocks.get(label) ?? 0) + task.amountIls);
   }
   return [...blocks.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
