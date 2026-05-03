@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import ScreenHeader from "@/components/ScreenHeader";
+import { WEEKLY_GOAL_STORAGE_KEY } from "@/lib/constants";
 import { listAllShiftAnalyses } from "@/lib/storage";
 import type { ScreenshotAnalysisSnapshot } from "@/types/models";
 
 const DEFAULT_WEEKLY_GOAL = 2900;
-const WEEKLY_GOAL_STORAGE_KEY = "woltcalc_weekly_goal_ils";
 
 export default function MonthlyPageContent() {
   const [analyses, setAnalyses] = useState<ScreenshotAnalysisSnapshot[]>([]);

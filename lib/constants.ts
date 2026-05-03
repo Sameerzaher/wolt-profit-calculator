@@ -35,7 +35,10 @@ export const MAX_STORED_DELIVERIES = 150;
 export const TIME_ZONE_IL = "Asia/Jerusalem";
 
 /** Backup file schema version — bump when structure changes */
-export const BACKUP_SCHEMA_VERSION = 2 as const;
+export const BACKUP_SCHEMA_VERSION = 3 as const;
+
+/** Weekly gross goal (₪) for monthly dashboard — stored in localStorage */
+export const WEEKLY_GOAL_STORAGE_KEY = "woltcalc_weekly_goal_ils";
 
 /** Previous schema still accepted for import-only migration */
 export const BACKUP_SCHEMA_VERSION_V1 = 1 as const;

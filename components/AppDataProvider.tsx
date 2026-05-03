@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { DEFAULT_APP_SETTINGS, DEFAULT_FUEL_SETTINGS } from "@/lib/constants";
+import { BACKUP_SCHEMA_VERSION, DEFAULT_APP_SETTINGS, DEFAULT_FUEL_SETTINGS, WEEKLY_GOAL_STORAGE_KEY } from "@/lib/constants";
 import { createDemoData } from "@/lib/demoData";
 import { calculateFuelCost, calculateQuickCheck } from "@/lib/scoring";
 import { dateKey } from "@/lib/utils";
@@ -12,7 +12,17 @@ import {
   usePreferredZonesStorage,
   useShiftsStorage
 } from "@/hooks/storage";
-import type { AppSettings, AppShift, AppShiftSession, Delivery, DeliveryCompletionInput, FuelSettings, QuickCheckInput } from "@/types/models";
+import { listAllShiftAnalyses, saveShiftAnalysisByDate } from "@/lib/storage";
+import type {
+  AppSettings,
+  AppShift,
+  AppShiftSession,
+  Delivery,
+  DeliveryCompletionInput,
+  FuelSettings,
+  QuickCheckInput,
+  ScreenshotAnalysisSnapshot
+} from "@/types/models";
 
 type AppDataContextType = {
   deliveries: Delivery[];
@@ -37,6 +47,7 @@ type AppDataContextType = {
   updatePreferredZones: (zones: string[]) => void;
   seedDemoData: () => void;
   exportData: () => void;
+  importBackup: (jsonText: string) => { ok: true } | { ok: false; error: string };
   resetData: () => void;
 };
 
@@ -270,13 +281,23 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const exportData = () => {
+    let weeklyGoalIls: string | undefined;
+    try {
+      const raw = localStorage.getItem(WEEKLY_GOAL_STORAGE_KEY);
+      if (raw) weeklyGoalIls = raw;
+    } catch {
+      /* ignore */
+    }
     const payload = {
+      schemaVersion: BACKUP_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       deliveries: deliveriesStore.state,
       shifts: shiftsStore.state,
       preferredZones: preferredZonesStore.state,
       appSettings: appSettingsStore.state,
-      fuelSettings: fuelSettingsStore.state
+      fuelSettings: fuelSettingsStore.state,
+      shiftAnalyses: listAllShiftAnalyses(),
+      ...(weeklyGoalIls ? { weeklyGoalIls } : {})
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -285,6 +306,62 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     link.download = `woltcalc-v2-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const importBackup = (jsonText: string): { ok: true } | { ok: false; error: string } => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      return { ok: false, error: "הקובץ אינו JSON תקין." };
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return { ok: false, error: "מבנה הקובץ לא מזוהה." };
+    }
+    const o = parsed as Record<string, unknown>;
+    if (!Array.isArray(o.deliveries)) {
+      return { ok: false, error: "בקובץ חסר מערך משלוחים (פורמט גיבוי ישן או קובץ שגוי)." };
+    }
+    if (!Array.isArray(o.shifts)) {
+      return { ok: false, error: "בקובץ חסר מערך משמרות." };
+    }
+    const preferred = Array.isArray(o.preferredZones) ? (o.preferredZones as string[]) : [];
+    const appSettingsNext =
+      typeof o.appSettings === "object" && o.appSettings !== null
+        ? { ...DEFAULT_APP_SETTINGS, ...(o.appSettings as AppSettings) }
+        : DEFAULT_APP_SETTINGS;
+    const fuelNext =
+      typeof o.fuelSettings === "object" && o.fuelSettings !== null
+        ? { ...DEFAULT_FUEL_SETTINGS, ...(o.fuelSettings as FuelSettings) }
+        : DEFAULT_FUEL_SETTINGS;
+    try {
+      deliveriesStore.setValue(o.deliveries as Delivery[]);
+      shiftsStore.setValue(o.shifts as AppShift[]);
+      preferredZonesStore.setValue(preferred);
+      appSettingsStore.setValue(appSettingsNext);
+      fuelSettingsStore.setValue(fuelNext);
+    } catch {
+      return { ok: false, error: "שגיאה בשכתוב הנתונים לאחסון." };
+    }
+    if (Array.isArray(o.shiftAnalyses)) {
+      for (const item of o.shiftAnalyses) {
+        if (item && typeof item === "object" && "shiftDate" in item && "analysis" in item) {
+          try {
+            saveShiftAnalysisByDate(item as ScreenshotAnalysisSnapshot);
+          } catch {
+            /* skip one bad snapshot */
+          }
+        }
+      }
+    }
+    if (typeof o.weeklyGoalIls === "string" && o.weeklyGoalIls.trim()) {
+      try {
+        localStorage.setItem(WEEKLY_GOAL_STORAGE_KEY, o.weeklyGoalIls.trim());
+      } catch {
+        /* ignore */
+      }
+    }
+    return { ok: true };
   };
 
   const resetData = () => {
@@ -318,6 +395,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     updatePreferredZones: preferredZonesStore.setValue,
     seedDemoData,
     exportData,
+    importBackup,
     resetData
   };
 
