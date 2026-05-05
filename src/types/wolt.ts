@@ -96,6 +96,7 @@ export interface FuelSettings {
 
 export interface AppSettings {
   dailyTarget: number;
+  currency: "ILS";
   onboardingDone: boolean;
   demoMode: boolean;
   activeDeliveryId: string | null;
@@ -154,14 +155,25 @@ export interface AppShiftSession {
   endsNextDay?: boolean;
 }
 
+export interface AppShiftBreak {
+  id: string;
+  start: string;
+  end?: string;
+}
+
 export interface AppShift {
   id: string;
   dateKey: string;
   startedAt: string;
   endedAt?: string;
+  startTime?: string;
+  endTime?: string;
   deliveryIds: string[];
   idleTimeEstimateMinutes: number;
   actualDrivenKm?: number;
   costPerKm?: number;
+  totalKm?: number;
+  totalIncome?: number;
+  breaks?: AppShiftBreak[];
   sessions?: AppShiftSession[];
 }

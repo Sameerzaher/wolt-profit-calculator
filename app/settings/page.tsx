@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ScreenHeader from "@/components/ScreenHeader";
 import { useAppData } from "@/components/AppDataProvider";
@@ -24,15 +24,60 @@ export default function SettingsPage() {
 
   const [zoneInput, setZoneInput] = useState("");
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [preferencesMessage, setPreferencesMessage] = useState<string | null>(null);
+  const [prefCostPerKm, setPrefCostPerKm] = useState(String(fuelSettings.costPerKm || 0.5));
+  const [prefCurrency, setPrefCurrency] = useState<"ILS">(appSettings.currency ?? "ILS");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const computedCostPerKm = useMemo(
     () => (fuelSettings.kmPerLiter > 0 ? fuelSettings.fuelPricePerLiter / fuelSettings.kmPerLiter : 0),
     [fuelSettings]
   );
 
+  useEffect(() => {
+    setPrefCostPerKm(String(fuelSettings.costPerKm || 0.5));
+  }, [fuelSettings.costPerKm]);
+
+  useEffect(() => {
+    setPrefCurrency(appSettings.currency ?? "ILS");
+  }, [appSettings.currency]);
+
+  const savePreferences = () => {
+    const parsedCostPerKm = Number(prefCostPerKm);
+    const safeCostPerKm = Number.isFinite(parsedCostPerKm) && parsedCostPerKm > 0 ? parsedCostPerKm : 0.5;
+    updateFuelSettings({ ...fuelSettings, costPerKm: safeCostPerKm });
+    updateAppSettings({ ...appSettings, currency: prefCurrency });
+    setPreferencesMessage("ההעדפות נשמרו בהצלחה.");
+  };
+
   return (
     <main className="space-y-4">
       <ScreenHeader title="הגדרות" subtitle="דלק, העדפות אזור ופעולות נתונים" />
+
+      <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <h3 className="text-base font-bold text-white">העדפות משתמש</h3>
+        <label className="block text-sm text-slate-300">
+          Cost per km
+          <input
+            type="number"
+            inputMode="decimal"
+            value={prefCostPerKm}
+            onChange={(event) => setPrefCostPerKm(event.target.value)}
+            className="mt-1 h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-white"
+          />
+        </label>
+        <label className="block text-sm text-slate-300">
+          Currency
+          <input value={prefCurrency} readOnly className="mt-1 h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-white" />
+        </label>
+        <button
+          type="button"
+          onClick={savePreferences}
+          className="h-12 rounded-xl bg-emerald-500 px-4 text-sm font-black text-slate-950"
+        >
+          Save
+        </button>
+        {preferencesMessage ? <p className="text-xs text-emerald-300">{preferencesMessage}</p> : null}
+      </section>
 
       <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
         <h3 className="text-base font-bold text-white">הגדרות דלק</h3>

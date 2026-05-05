@@ -7,12 +7,17 @@ import { useAppData } from "@/components/AppDataProvider";
 import { isBadOrder } from "@/features/orders/history";
 import { calculateActiveShiftSnapshot } from "@/features/shifts/momentum";
 import { summarizeShiftSessions, validateShiftSessions } from "@/features/shifts/sessions";
-import { calculateRatePerHour, calculateRatePerKm, calculateVehicleCost } from "@/src/lib/calculations";
+import { calculateRatePerHour, calculateRatePerKm, calculateVehicleCost } from "@/lib/calculations";
+import { calculateBreakMinutes, calculateHourlyRateFromShift, calculateWorkingMinutes } from "@/lib/shiftTracking";
+import { useAppStore } from "@/hooks/useAppStore";
 import NetProfitCard from "@/src/components/shift/NetProfitCard";
 import type { AppShiftSession } from "@/types/models";
 
 export default function ActiveShiftPage() {
-  const { deliveries, shifts, fuelSettings, appSettings, endShift, updateActiveShiftExpenses, updateActiveShiftSessions } = useAppData();
+  const { deliveries, shifts, fuelSettings, appSettings, startShift, endShift, startBreak, endBreak, updateActiveShiftExpenses, updateActiveShiftSessions } =
+    useAppData();
+  const globalCostPerKm = useAppStore((state) => state.settings.costPerKm);
+  const [liveNow, setLiveNow] = useState(() => new Date().toISOString());
   const shift = calculateActiveShiftSnapshot(deliveries, shifts, fuelSettings, appSettings.dailyTarget, appSettings.activeShiftId);
   const activeShift = useMemo(
     () => shifts.find((entry) => entry.id === appSettings.activeShiftId) ?? shifts.find((entry) => !entry.endedAt),
@@ -20,16 +25,21 @@ export default function ActiveShiftPage() {
   );
   const [sessions, setSessions] = useState<AppShiftSession[]>([]);
   const [actualKmInput, setActualKmInput] = useState("");
-  const [costPerKmInput, setCostPerKmInput] = useState("0.7");
+  const [costPerKmInput, setCostPerKmInput] = useState(String(globalCostPerKm || 0.7));
 
   useEffect(() => {
     setSessions(activeShift?.sessions ?? []);
     setActualKmInput(activeShift?.actualDrivenKm !== undefined ? String(activeShift.actualDrivenKm) : "");
-    setCostPerKmInput(String(activeShift?.costPerKm ?? 0.7));
-  }, [activeShift?.actualDrivenKm, activeShift?.costPerKm, activeShift?.id, activeShift?.sessions]);
+    setCostPerKmInput(String(activeShift?.costPerKm ?? (globalCostPerKm || 0.7)));
+  }, [activeShift?.actualDrivenKm, activeShift?.costPerKm, activeShift?.id, activeShift?.sessions, globalCostPerKm]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setLiveNow(new Date().toISOString()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const actualKm = toOptionalNumber(actualKmInput);
-  const costPerKm = toOptionalNumber(costPerKmInput) ?? 0.7;
+  const costPerKm = toOptionalNumber(costPerKmInput) ?? (globalCostPerKm || 0.7);
   const sessionSummary = useMemo(() => summarizeShiftSessions(sessions), [sessions]);
   const sessionIssues = useMemo(() => validateShiftSessions(sessions), [sessions]);
   const activeWorkHours = sessionSummary.activeWorkHours ?? (shift.runningMinutes > 0 ? shift.runningMinutes / 60 : 0);
@@ -41,6 +51,11 @@ export default function ActiveShiftPage() {
   const grossPerKm = calculateRatePerKm(grossIncome, actualKm);
   const netPerKm = calculateRatePerKm(netIncome, actualKm);
   const canUseSessionHours = sessionSummary.activeWorkHours !== undefined;
+  const breaks = activeShift?.breaks ?? [];
+  const breakMinutes = activeShift ? calculateBreakMinutes(breaks, liveNow) : 0;
+  const workingMinutes = activeShift ? calculateWorkingMinutes(activeShift.startedAt, activeShift.endedAt ?? liveNow, breaks) : 0;
+  const shiftHourlyRate = activeShift ? calculateHourlyRateFromShift(activeShift.totalIncome ?? grossIncome, workingMinutes) : 0;
+  const hasOpenBreak = breaks.length > 0 && !breaks[breaks.length - 1].end;
   const profitAfterDeliveryFuel = grossIncome - shift.estimatedFuelCost;
 
   const wastedOrdersToday = deliveries.filter(
@@ -85,6 +100,28 @@ export default function ActiveShiftPage() {
     <main className="space-y-4 pb-40">
       <ScreenHeader title="מצב משמרת פעילה" subtitle="בקרה חיה בזמן אמת מתוך הרכב" />
 
+      <section className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-800 bg-slate-900 p-3">
+        <button type="button" onClick={startShift} className="h-11 rounded-xl bg-emerald-500 text-sm font-black text-slate-950">
+          התחל משמרת
+        </button>
+        <button
+          type="button"
+          onClick={hasOpenBreak ? endBreak : startBreak}
+          disabled={!activeShift || Boolean(activeShift.endedAt)}
+          className="h-11 rounded-xl border border-amber-500/50 bg-amber-500/10 text-sm font-black text-amber-100 disabled:opacity-40"
+        >
+          {hasOpenBreak ? "סיים הפסקה" : "הוסף הפסקה"}
+        </button>
+        <button
+          type="button"
+          onClick={endShift}
+          disabled={!activeShift || Boolean(activeShift.endedAt)}
+          className="h-11 rounded-xl border border-rose-500/50 bg-rose-500/15 text-sm font-black text-rose-100 disabled:opacity-40"
+        >
+          סיים משמרת
+        </button>
+      </section>
+
       <section className="grid grid-cols-2 gap-3">
         <article className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
           <p className="text-xs text-slate-400">טיימר רץ</p>
@@ -102,6 +139,19 @@ export default function ActiveShiftPage() {
           <p className="text-xs text-slate-400">משלוחים</p>
           <p className="mt-1 text-2xl font-black text-white">{shift.deliveriesCount}</p>
         </article>
+        <article className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <p className="text-xs text-slate-400">זמן עבודה נטו</p>
+          <p className="mt-1 text-2xl font-black text-emerald-200">{(workingMinutes / 60).toFixed(2)} שעות</p>
+        </article>
+        <article className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <p className="text-xs text-slate-400">זמן הפסקות</p>
+          <p className="mt-1 text-2xl font-black text-amber-200">{(breakMinutes / 60).toFixed(2)} שעות</p>
+        </article>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <p className="text-sm text-slate-300">שכר שעתי נטו לפי זמן עבודה (ללא הפסקות): ₪{shiftHourlyRate.toFixed(1)}</p>
+        <p className="text-xs text-slate-400">חישוב: זמן עבודה = end - start - breaks | תומך גם במשמרות שחוצות חצות</p>
       </section>
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
@@ -244,7 +294,7 @@ export default function ActiveShiftPage() {
                 if (!activeShift) return;
                 updateActiveShiftExpenses({
                   actualDrivenKm: actualKm,
-                  costPerKm: toOptionalNumber(nextValue) ?? 0.7
+                  costPerKm: toOptionalNumber(nextValue) ?? (globalCostPerKm || 0.7)
                 });
               }}
               className="h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-white"

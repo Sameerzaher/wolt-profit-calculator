@@ -1,5 +1,6 @@
 import { DECISION_THRESHOLDS } from "@/lib/constants";
 import { getZoneRegion, mapTimeOfDayToPeakSlot, zoneMeta } from "@/data/zones";
+import { calculateCost, calculateHourlyRate, calculateProfit } from "@/lib/calculations";
 import { clamp, round2 } from "@/lib/utils";
 import type { Decision, FuelSettings, QuickCheckInput, QuickCheckResult } from "@/types/models";
 
@@ -18,7 +19,7 @@ function decisionToLabel(decision: Decision): QuickCheckResult["decisionLabel"] 
 export function calculateFuelCost(km: number, settings: FuelSettings): number {
   const computed = settings.kmPerLiter > 0 ? settings.fuelPricePerLiter / settings.kmPerLiter : 0;
   const costPerKm = settings.costPerKm > 0 ? settings.costPerKm : computed;
-  return round2(Math.max(0, km) * costPerKm);
+  return calculateCost(km, costPerKm);
 }
 
 export function calculateQuickCheck(
@@ -28,8 +29,8 @@ export function calculateQuickCheck(
 ): QuickCheckResult {
   void preferredZones;
   const estimatedFuelCost = calculateFuelCost(input.estimatedKm, fuelSettings);
-  const estimatedNetProfit = input.offerAmount - estimatedFuelCost;
-  const estimatedIlsPerHour = input.estimatedMinutes > 0 ? estimatedNetProfit / (input.estimatedMinutes / 60) : 0;
+  const estimatedNetProfit = calculateProfit(input.offerAmount, estimatedFuelCost);
+  const estimatedIlsPerHour = calculateHourlyRate(estimatedNetProfit, input.estimatedMinutes / 60);
 
   const destinationMeta = zoneMeta[input.dropoffZone as keyof typeof zoneMeta];
   const destinationStrength = destinationMeta?.strength ?? "medium";

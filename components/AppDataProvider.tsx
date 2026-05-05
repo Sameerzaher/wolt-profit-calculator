@@ -3,8 +3,10 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { BACKUP_SCHEMA_VERSION, DEFAULT_APP_SETTINGS, DEFAULT_FUEL_SETTINGS, WEEKLY_GOAL_STORAGE_KEY } from "@/lib/constants";
 import { createDemoData } from "@/lib/demoData";
+import { calculateHourlyRate, calculateProfit } from "@/lib/calculations";
 import { calculateFuelCost, calculateQuickCheck } from "@/lib/scoring";
 import { dateKey } from "@/lib/utils";
+import { useAppStore } from "@/hooks/useAppStore";
 import {
   useAppSettingsStorage,
   useDeliveriesStorage,
@@ -16,6 +18,7 @@ import { listAllShiftAnalyses, saveShiftAnalysisByDate } from "@/lib/storage";
 import type {
   AppSettings,
   AppShift,
+  AppShiftBreak,
   AppShiftSession,
   Delivery,
   DeliveryCompletionInput,
@@ -35,6 +38,9 @@ type AppDataContextType = {
   runQuickCheck: (input: QuickCheckInput) => ReturnType<typeof calculateQuickCheck>;
   startShift: () => void;
   endShift: () => void;
+  startBreak: () => void;
+  endBreak: () => void;
+  updateActiveShiftSnapshot: (payload: { totalIncome?: number; totalKm?: number; sessions?: AppShiftSession[] }) => void;
   updateActiveShiftExpenses: (payload: { actualDrivenKm?: number; costPerKm?: number }) => void;
   updateActiveShiftSessions: (sessions: AppShiftSession[]) => void;
   acceptQuickCheck: (input: QuickCheckInput) => void;
@@ -61,8 +67,12 @@ function ensureTodayShift(shifts: AppShift[]): AppShift {
     id: crypto.randomUUID(),
     dateKey: today,
     startedAt: new Date().toISOString(),
+    startTime: new Date().toISOString(),
     deliveryIds: [],
     idleTimeEstimateMinutes: 0,
+    totalKm: 0,
+    totalIncome: 0,
+    breaks: [],
     sessions: []
   };
 }
@@ -98,6 +108,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isHydrated = storesHydrated || hydrationFallback;
+  const setCurrentShiftId = useAppStore((state) => state.setCurrentShiftId);
+  const setCostPerKm = useAppStore((state) => state.setCostPerKm);
+
+  useEffect(() => {
+    setCurrentShiftId(appSettingsStore.state.activeShiftId);
+  }, [appSettingsStore.state.activeShiftId, setCurrentShiftId]);
+
+  useEffect(() => {
+    setCostPerKm(fuelSettingsStore.state.costPerKm);
+  }, [fuelSettingsStore.state.costPerKm, setCostPerKm]);
 
   const activeDelivery =
     deliveriesStore.state.find((delivery) => delivery.id === appSettingsStore.state.activeDeliveryId) ?? null;
@@ -109,26 +129,72 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const openShift = shiftsStore.state.find((shift) => !shift.endedAt);
     if (openShift) {
       appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: openShift.id });
+      setCurrentShiftId(openShift.id);
       return;
     }
     const shift: AppShift = {
       id: crypto.randomUUID(),
       dateKey: dateKey(new Date().toISOString()),
       startedAt: new Date().toISOString(),
+      startTime: new Date().toISOString(),
       deliveryIds: [],
       idleTimeEstimateMinutes: 0,
+      totalKm: 0,
+      totalIncome: 0,
+      breaks: [],
       sessions: []
     };
     shiftsStore.setValue([shift, ...shiftsStore.state]);
     appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: shift.id });
+    setCurrentShiftId(shift.id);
   };
 
   const endShift = () => {
     const current = getCurrentShift(shiftsStore.state, appSettingsStore.state.activeShiftId);
     shiftsStore.setValue(
-      shiftsStore.state.map((shift) => (shift.id === current.id ? { ...shift, endedAt: new Date().toISOString() } : shift))
+      shiftsStore.state.map((shift) =>
+        shift.id === current.id ? { ...shift, endedAt: new Date().toISOString(), endTime: new Date().toISOString() } : shift
+      )
     );
     appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: null, activeDeliveryId: null });
+    setCurrentShiftId(null);
+  };
+
+  const startBreak = () => {
+    const current = getCurrentShift(shiftsStore.state, appSettingsStore.state.activeShiftId);
+    const hasCurrent = shiftsStore.state.some((shift) => shift.id === current.id);
+    const lastBreak = current.breaks?.[current.breaks.length - 1];
+    if (lastBreak && !lastBreak.end) return;
+    const nextBreak: AppShiftBreak = { id: crypto.randomUUID(), start: new Date().toISOString() };
+    const nextBreaks = [...(current.breaks ?? []), nextBreak];
+
+    if (!hasCurrent) {
+      shiftsStore.setValue([{ ...current, breaks: nextBreaks }, ...shiftsStore.state]);
+      appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: current.id });
+      setCurrentShiftId(current.id);
+      return;
+    }
+
+    shiftsStore.setValue(shiftsStore.state.map((shift) => (shift.id === current.id ? { ...shift, breaks: nextBreaks } : shift)));
+  };
+
+  const endBreak = () => {
+    const current = getCurrentShift(shiftsStore.state, appSettingsStore.state.activeShiftId);
+    const hasCurrent = shiftsStore.state.some((shift) => shift.id === current.id);
+    const breaks = [...(current.breaks ?? [])];
+    const lastIndex = breaks.length - 1;
+    if (lastIndex < 0) return;
+    if (breaks[lastIndex].end) return;
+    breaks[lastIndex] = { ...breaks[lastIndex], end: new Date().toISOString() };
+
+    if (!hasCurrent) {
+      shiftsStore.setValue([{ ...current, breaks }, ...shiftsStore.state]);
+      appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: current.id });
+      setCurrentShiftId(current.id);
+      return;
+    }
+
+    shiftsStore.setValue(shiftsStore.state.map((shift) => (shift.id === current.id ? { ...shift, breaks } : shift)));
   };
 
   const updateActiveShiftExpenses = (payload: { actualDrivenKm?: number; costPerKm?: number }) => {
@@ -139,11 +205,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         {
           ...current,
           actualDrivenKm: payload.actualDrivenKm,
-          costPerKm: payload.costPerKm
+          costPerKm: payload.costPerKm,
+          totalKm: payload.actualDrivenKm
         },
         ...shiftsStore.state
       ]);
       appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: current.id });
+      setCurrentShiftId(current.id);
       return;
     }
     shiftsStore.setValue(
@@ -152,11 +220,32 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           ? {
               ...shift,
               actualDrivenKm: payload.actualDrivenKm,
-              costPerKm: payload.costPerKm
+              costPerKm: payload.costPerKm,
+              totalKm: payload.actualDrivenKm
             }
           : shift
       )
     );
+  };
+
+  const updateActiveShiftSnapshot = (payload: { totalIncome?: number; totalKm?: number; sessions?: AppShiftSession[] }) => {
+    const current = getCurrentShift(shiftsStore.state, appSettingsStore.state.activeShiftId);
+    const hasCurrent = shiftsStore.state.some((shift) => shift.id === current.id);
+    const nextShift: AppShift = {
+      ...current,
+      ...(payload.totalIncome !== undefined ? { totalIncome: payload.totalIncome } : {}),
+      ...(payload.totalKm !== undefined ? { totalKm: payload.totalKm, actualDrivenKm: payload.totalKm } : {}),
+      ...(payload.sessions ? { sessions: payload.sessions } : {})
+    };
+
+    if (!hasCurrent) {
+      shiftsStore.setValue([nextShift, ...shiftsStore.state]);
+      appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: current.id });
+      setCurrentShiftId(current.id);
+      return;
+    }
+
+    shiftsStore.setValue(shiftsStore.state.map((shift) => (shift.id === current.id ? nextShift : shift)));
   };
 
   const updateActiveShiftSessions = (sessions: AppShiftSession[]) => {
@@ -165,6 +254,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (!hasCurrent) {
       shiftsStore.setValue([{ ...current, sessions }, ...shiftsStore.state]);
       appSettingsStore.setValue({ ...appSettingsStore.state, activeShiftId: current.id });
+      setCurrentShiftId(current.id);
       return;
     }
     shiftsStore.setValue(
@@ -197,14 +287,15 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       )
     );
     appSettingsStore.setValue({ ...appSettingsStore.state, activeDeliveryId: deliveryId });
+    setCurrentShiftId(shift.id);
   };
 
   const addManualCompletedDelivery = (input: QuickCheckInput, completion: DeliveryCompletionInput) => {
     const shift = getCurrentShift(shiftsStore.state, appSettingsStore.state.activeShiftId);
     const quickCheckResult = runQuickCheck(input);
     const fuelCost = calculateFuelCost(completion.actualKm, fuelSettingsStore.state);
-    const finalNetProfit = completion.actualAmount + completion.tipCash - fuelCost;
-    const finalIlsPerHour = completion.actualMinutes > 0 ? finalNetProfit / (completion.actualMinutes / 60) : 0;
+    const finalNetProfit = calculateProfit(completion.actualAmount + completion.tipCash, fuelCost);
+    const finalIlsPerHour = calculateHourlyRate(finalNetProfit, completion.actualMinutes / 60);
     const deliveryId = crypto.randomUUID();
     const completedDelivery: Delivery = {
       id: deliveryId,
@@ -221,11 +312,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     };
     deliveriesStore.setValue((current) => [completedDelivery, ...current]);
     if (!shiftsStore.state.some((entry) => entry.id === shift.id)) {
-      shiftsStore.setValue([{ ...shift, deliveryIds: [deliveryId] }, ...shiftsStore.state]);
+      shiftsStore.setValue([
+        { ...shift, deliveryIds: [deliveryId], totalIncome: completion.actualAmount + completion.tipCash },
+        ...shiftsStore.state
+      ]);
     } else {
       shiftsStore.setValue(
         shiftsStore.state.map((entry) =>
-          entry.id === shift.id ? { ...entry, deliveryIds: [deliveryId, ...entry.deliveryIds] } : entry
+          entry.id === shift.id
+            ? {
+                ...entry,
+                deliveryIds: [deliveryId, ...entry.deliveryIds],
+                totalIncome: (entry.totalIncome ?? 0) + completion.actualAmount + completion.tipCash
+              }
+            : entry
         )
       );
     }
@@ -252,8 +352,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const completeActiveDelivery = (payload: DeliveryCompletionInput) => {
     if (!activeDelivery) return;
     const fuelCost = calculateFuelCost(payload.actualKm, fuelSettingsStore.state);
-    const finalNetProfit = payload.actualAmount + payload.tipCash - fuelCost;
-    const finalIlsPerHour = payload.actualMinutes > 0 ? finalNetProfit / (payload.actualMinutes / 60) : 0;
+    const finalNetProfit = calculateProfit(payload.actualAmount + payload.tipCash, fuelCost);
+    const finalIlsPerHour = calculateHourlyRate(finalNetProfit, payload.actualMinutes / 60);
 
     deliveriesStore.setValue((current) =>
       current.map((delivery) =>
@@ -270,6 +370,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           : delivery
       )
     );
+    shiftsStore.setValue(
+      shiftsStore.state.map((shift) =>
+        shift.id === activeDelivery.shiftId
+          ? { ...shift, totalIncome: (shift.totalIncome ?? 0) + payload.actualAmount + payload.tipCash }
+          : shift
+      )
+    );
     appSettingsStore.setValue({ ...appSettingsStore.state, activeDeliveryId: null });
   };
 
@@ -278,6 +385,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     deliveriesStore.setValue(demo.deliveries);
     shiftsStore.setValue(demo.shifts);
     appSettingsStore.setValue({ ...appSettingsStore.state, demoMode: true, onboardingDone: true, activeDeliveryId: null });
+    setCurrentShiftId(null);
   };
 
   const exportData = () => {
@@ -370,6 +478,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     preferredZonesStore.setValue([]);
     appSettingsStore.setValue(DEFAULT_APP_SETTINGS);
     fuelSettingsStore.setValue(DEFAULT_FUEL_SETTINGS);
+    setCurrentShiftId(null);
+    setCostPerKm(DEFAULT_FUEL_SETTINGS.costPerKm);
   };
 
   const value: AppDataContextType = {
@@ -383,14 +493,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     runQuickCheck,
     startShift,
     endShift,
+    startBreak,
+    endBreak,
     updateActiveShiftExpenses,
+    updateActiveShiftSnapshot,
     updateActiveShiftSessions,
     acceptQuickCheck,
     addManualCompletedDelivery,
     markPickedUp,
     markDelivered,
     completeActiveDelivery,
-    updateFuelSettings: fuelSettingsStore.setValue,
+    updateFuelSettings: (next) => {
+      fuelSettingsStore.setValue(next);
+      setCostPerKm(next.costPerKm);
+    },
     updateAppSettings: appSettingsStore.setValue,
     updatePreferredZones: preferredZonesStore.setValue,
     seedDemoData,

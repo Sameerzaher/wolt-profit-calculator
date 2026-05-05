@@ -1,5 +1,6 @@
-import { dateKey, durationBetweenMinutes, getTodayKey, round2 } from "@/lib/utils";
+import { getTodayKey, round2 } from "@/lib/utils";
 import { calculateFuelCost } from "@/lib/scoring";
+import { calculateWorkingMinutes } from "@/lib/shiftTracking";
 import type { AppShift, Delivery, FuelSettings } from "@/types/models";
 
 export interface ActiveShiftSnapshot {
@@ -51,7 +52,8 @@ export function calculateActiveShiftSnapshot(
     0
   );
   const netProfit = incomeSoFar - estimatedFuelCost;
-  const runningMinutes = durationBetweenMinutes(activeShift.startedAt, new Date().toISOString());
+  const nowIso = new Date().toISOString();
+  const runningMinutes = calculateWorkingMinutes(activeShift.startedAt, nowIso, activeShift.breaks ?? []);
   const runningHours = runningMinutes > 0 ? runningMinutes / 60 : 0;
   const hourlyRate = runningHours > 0 ? netProfit / runningHours : 0;
   const targetRemaining = Math.max(0, dailyTarget - incomeSoFar);

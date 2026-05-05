@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ScreenHeader from "@/components/ScreenHeader";
+import { useAppData } from "@/components/AppDataProvider";
 import {
   buildShiftAnalysis,
   dedupeTasks,
   detectShiftDateFromText,
+  parseOcrShiftSummary,
   parseTasksFromOcrText,
+  type ParsedOcrShiftSummary,
   summarizeSessions,
   summarizeTasksForOcrPreview,
   validateSessions
@@ -36,6 +39,7 @@ type PendingOcrBatch = {
 const DEFAULT_COST_PER_KM = 0.7;
 
 export default function ScreenshotAnalyzerPage() {
+  const { startShift, updateActiveShiftSnapshot } = useAppData();
   const today = getTodayDateInput();
   const [shiftDate, setShiftDate] = useState(today);
 
@@ -64,6 +68,8 @@ export default function ScreenshotAnalyzerPage() {
   const [createdAt, setCreatedAt] = useState<string>(new Date().toISOString());
   const [confirmedAnalysis, setConfirmedAnalysis] = useState<ShiftAnalysis | null>(null);
   const [pendingBatch, setPendingBatch] = useState<PendingOcrBatch | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState<ParsedOcrShiftSummary>({});
 
   useEffect(() => {
     setError(null);
@@ -132,6 +138,18 @@ export default function ScreenshotAnalyzerPage() {
     setConfirmedAnalysis(null);
   }, [tasks, actualDrivenKm, costPerKm, sessions]);
 
+  useEffect(() => {
+    if (tasks.length === 0) return;
+    const gross = tasks.reduce((sum, task) => sum + task.amountIls, 0);
+    const deliveries = tasks.reduce((sum, task) => sum + Math.max(1, task.deliveriesCount), 0);
+    const workingHours = sessionSummary.activeWorkHours;
+    setSummaryDraft((prev) => ({
+      totalEarnings: prev.totalEarnings ?? gross,
+      numberOfDeliveries: prev.numberOfDeliveries ?? deliveries,
+      workingHours: prev.workingHours ?? workingHours
+    }));
+  }, [sessionSummary.activeWorkHours, tasks]);
+
   const onPickFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
     if (!fileList) return;
@@ -154,6 +172,27 @@ export default function ScreenshotAnalyzerPage() {
     event.currentTarget.value = "";
   };
 
+  const handleDropFiles = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length === 0) return;
+    const asUploadItems: UploadItem[] = files
+      .filter((file) => isLikelyImageFile(file))
+      .map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        previewUrl: URL.createObjectURL(file)
+      }));
+    if (asUploadItems.length === 0) {
+      setError("לא נמצאו קבצי תמונה תקינים.");
+      return;
+    }
+    setError(null);
+    setUploads((prev) => [...prev, ...asUploadItems]);
+  };
+
   const removeUpload = (id: string) => {
     setUploads((prev) => {
       const target = prev.find((item) => item.id === id);
@@ -173,6 +212,7 @@ export default function ScreenshotAnalyzerPage() {
       const tesseract = await import("tesseract.js");
       const collectedTexts: string[] = [];
       const collectedTasks: DeliveryTask[] = [];
+      const collectedSummaries: ParsedOcrShiftSummary[] = [];
       let detectedDate: string | undefined;
 
       for (let imageIndex = 0; imageIndex < uploads.length; imageIndex += 1) {
@@ -190,6 +230,7 @@ export default function ScreenshotAnalyzerPage() {
 
         const text = result.data.text ?? "";
         collectedTexts.push(text);
+        collectedSummaries.push(parseOcrShiftSummary(text));
         detectedDate = detectedDate ?? detectShiftDateFromText(text);
         collectedTasks.push(...parseTasksFromOcrText(text, imageIndex));
       }
@@ -213,6 +254,15 @@ export default function ScreenshotAnalyzerPage() {
         setRawTexts((prev) => [...prev, ...collectedTexts]);
         if (detectedDate) setSuggestedDate(detectedDate);
       }
+
+      const detectedEarnings = collectedSummaries.find((s) => s.totalEarnings !== undefined)?.totalEarnings;
+      const detectedDeliveries = collectedSummaries.find((s) => s.numberOfDeliveries !== undefined)?.numberOfDeliveries;
+      const detectedWorkingHours = collectedSummaries.find((s) => s.workingHours !== undefined)?.workingHours;
+      setSummaryDraft((prev) => ({
+        totalEarnings: detectedEarnings ?? prev.totalEarnings,
+        numberOfDeliveries: detectedDeliveries ?? prev.numberOfDeliveries,
+        workingHours: detectedWorkingHours ?? prev.workingHours
+      }));
 
       setUploads([]);
     } catch (ocrError: unknown) {
@@ -318,6 +368,28 @@ export default function ScreenshotAnalyzerPage() {
     setPendingBatch(null);
   };
 
+  const applySummaryToActiveShift = () => {
+    startShift();
+    const workingHours = summaryDraft.workingHours;
+    const totalEarnings = summaryDraft.totalEarnings;
+    const sessionsFromSummary =
+      typeof workingHours === "number" && workingHours > 0
+        ? [
+            {
+              id: crypto.randomUUID(),
+              startTime: hoursAgoToTimeString(workingHours),
+              endTime: currentTimeString(),
+              isNextDay: false
+            }
+          ]
+        : undefined;
+    updateActiveShiftSnapshot({
+      totalIncome: totalEarnings,
+      totalKm: actualDrivenKmValue,
+      sessions: sessionsFromSummary
+    });
+  };
+
   return (
     <main className="space-y-4">
       <ScreenHeader
@@ -350,13 +422,24 @@ export default function ScreenshotAnalyzerPage() {
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
         <label className="mb-2 block text-sm font-bold text-slate-200">העלאת צילומים (כמה בבת אחת)</label>
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={onPickFiles}
-          className="block w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-emerald-500 file:px-4 file:py-3 file:text-sm file:font-black file:text-slate-950"
-        />
+        <div
+          onDrop={handleDropFiles}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          className={`rounded-xl border-2 border-dashed p-4 ${isDragging ? "border-emerald-400 bg-emerald-500/10" : "border-slate-700 bg-slate-950"}`}
+        >
+          <p className="text-xs text-slate-300">גרור ושחרר תמונות לכאן או בחר קבצים ידנית</p>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={onPickFiles}
+            className="mt-3 block w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-emerald-500 file:px-4 file:py-3 file:text-sm file:font-black file:text-slate-950"
+          />
+        </div>
         <p className="mt-2 text-xs text-slate-400">
           {uploads.length > 0 ? `${uploads.length} תמונות נבחרו` : "לא נבחרו תמונות עדיין"}
         </p>
@@ -396,6 +479,7 @@ export default function ScreenshotAnalyzerPage() {
           </p>
         ) : null}
         {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
+        {error ? <p className="mt-1 text-xs text-slate-400">אפשר להמשיך בהזנה ידנית גם אם ה-OCR נכשל.</p> : null}
         {pendingBatch ? (
           <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
             <p className="font-bold">יש כבר משמרת בתאריך הזה. איך להמשיך?</p>
@@ -447,6 +531,42 @@ export default function ScreenshotAnalyzerPage() {
                 <strong>{ocrTasksSummary.deliveryCount}</strong>
               </li>
             </ul>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <p className="text-sm font-bold text-slate-200">נתונים שחולצו (ניתנים לעריכה)</p>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <input
+                value={summaryDraft.totalEarnings ?? ""}
+                onChange={(e) => setSummaryDraft((prev) => ({ ...prev, totalEarnings: toOptionalNumber(e.target.value) }))}
+                placeholder="סה״כ הכנסות (₪)"
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              />
+              <input
+                value={summaryDraft.numberOfDeliveries ?? ""}
+                onChange={(e) =>
+                  setSummaryDraft((prev) => ({
+                    ...prev,
+                    numberOfDeliveries: toOptionalNumber(e.target.value) !== undefined ? Math.max(0, Math.round(toOptionalNumber(e.target.value)!)) : undefined
+                  }))
+                }
+                placeholder="מספר משלוחים"
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              />
+              <input
+                value={summaryDraft.workingHours ?? ""}
+                onChange={(e) => setSummaryDraft((prev) => ({ ...prev, workingHours: toOptionalNumber(e.target.value) }))}
+                placeholder="זמן עבודה (שעות)"
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={applySummaryToActiveShift}
+              className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm font-bold text-emerald-100"
+            >
+              מלא אוטומטית למשמרת פעילה
+            </button>
           </section>
 
           <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
@@ -679,4 +799,15 @@ function toDateTimeLocalValue(dateTime: string): string {
 function fromDateTimeLocalValue(value: string): string {
   if (!value) return "";
   return `${value}:00`;
+}
+
+function currentTimeString(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+function hoursAgoToTimeString(hours: number): string {
+  const now = new Date();
+  const before = new Date(now.getTime() - hours * 60 * 60 * 1000);
+  return `${String(before.getHours()).padStart(2, "0")}:${String(before.getMinutes()).padStart(2, "0")}`;
 }

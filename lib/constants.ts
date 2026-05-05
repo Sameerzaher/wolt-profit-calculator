@@ -13,11 +13,12 @@ export const DEFAULT_FUEL_SETTINGS: FuelSettings = {
   vehicleName: "Lexus CT200h",
   kmPerLiter: 20,
   fuelPricePerLiter: 7.5,
-  costPerKm: 0.38
+  costPerKm: 0.5
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   dailyTarget: 500,
+  currency: "ILS",
   onboardingDone: false,
   demoMode: false,
   activeDeliveryId: null,

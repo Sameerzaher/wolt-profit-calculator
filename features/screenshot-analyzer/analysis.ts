@@ -1,6 +1,6 @@
 import type { DeliveryTask, ShiftAnalysis, ShiftSession } from "@/types/models";
 import { clamp, round2 } from "@/lib/utils";
-import { calculateNetIncome, calculateRatePerHour, calculateRatePerKm, calculateVehicleCost } from "@/src/lib/calculations";
+import { calculateNetIncome, calculateRatePerHour, calculateRatePerKm, calculateVehicleCost } from "@/lib/calculations";
 import { buildShiftInsights } from "@/src/lib/insights";
 
 type ParsedRestaurant = {
@@ -9,10 +9,19 @@ type ParsedRestaurant = {
   deliveriesCount: number;
 };
 
+export type ParsedOcrShiftSummary = {
+  totalEarnings?: number;
+  numberOfDeliveries?: number;
+  workingHours?: number;
+};
+
 const AMOUNT_REGEX = /(?:₪|NIS|ILS|(?:\bIS\b)|[A-Za-z])?\s*([0-9]+(?:[.,][0-9]{1,2})?)\s*$/i;
 const KM_REGEX = /([0-9]+(?:[.,][0-9]+)?)\s*km/i;
 const TIME_REGEX = /\b([01]?\d|2[0-3]):([0-5]\d)\b/;
 const DATE_TEXT_REGEX = /\b([0-3]?\d)\s+([A-Za-z]{3,9})\s+(20\d{2})\b/;
+const MONEY_REGEX = /(?:total|earnings|income|today)\D{0,20}(?:₪|nis|ils)?\s*([0-9]+(?:[.,][0-9]{1,2})?)/i;
+const DELIVERIES_REGEX = /([0-9]+)\s*(?:deliver(?:y|ies)|orders)/i;
+const WORKING_TIME_REGEX = /([0-9]+)\s*(?:h|hr|hour|hours)\s*([0-9]{1,2})?\s*(?:m|min|minutes?)?/i;
 const MONTHS: Record<string, number> = {
   jan: 1,
   january: 1,
@@ -274,6 +283,34 @@ export function detectShiftDateFromText(text: string): string | undefined {
   if (!Number.isFinite(day) || !month || !Number.isFinite(year)) return undefined;
   if (day < 1 || day > 31) return undefined;
   return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+export function parseOcrShiftSummary(text: string): ParsedOcrShiftSummary {
+  const summary: ParsedOcrShiftSummary = {};
+  const normalized = text.replace(/\n/g, " ");
+
+  const moneyMatch = normalized.match(MONEY_REGEX);
+  if (moneyMatch) {
+    const value = toNumber(moneyMatch[1]);
+    if (Number.isFinite(value)) summary.totalEarnings = round2(value);
+  }
+
+  const deliveriesMatch = normalized.match(DELIVERIES_REGEX);
+  if (deliveriesMatch) {
+    const deliveries = Number(deliveriesMatch[1]);
+    if (Number.isFinite(deliveries)) summary.numberOfDeliveries = deliveries;
+  }
+
+  const workingTimeMatch = normalized.match(WORKING_TIME_REGEX);
+  if (workingTimeMatch) {
+    const hours = Number(workingTimeMatch[1]);
+    const minutes = workingTimeMatch[2] ? Number(workingTimeMatch[2]) : 0;
+    if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+      summary.workingHours = round2(hours + minutes / 60);
+    }
+  }
+
+  return summary;
 }
 
 function scoreShift(grossPerHour: number | undefined, grossPerKm: number | undefined, insights: string[]): number {

@@ -1,6 +1,7 @@
 import { calculateFuelCost } from "@/lib/scoring";
 import { dateKey, durationBetweenMinutes, getTodayKey, round2 } from "@/lib/utils";
 import { getZoneRegion } from "@/data/zones";
+import { calculateWorkingMinutes } from "@/lib/shiftTracking";
 import type { AppShift, Delivery, DropoffDemandQuality, FuelSettings, ZoneStats, ZoneStrength } from "@/types/models";
 
 export interface DashboardStats {
@@ -28,6 +29,16 @@ export interface WeeklyInsights {
   lowProfitDeliveries: number;
   recommendationSummary: string;
   daySeries: Array<{ day: string; profit: number }>;
+}
+
+export interface ShiftHistoryEntry {
+  id: string;
+  date: string;
+  income: number;
+  km: number;
+  profit: number;
+  hourlyRate: number;
+  workingHours: number;
 }
 
 export function getCompletedDeliveries(deliveries: Delivery[]): Delivery[] {
@@ -264,4 +275,98 @@ export function calculateZonePerformance(deliveries: Delivery[]): ZoneStats[] {
       };
     })
     .sort((a, b) => b.avgScore - a.avgScore);
+}
+
+export function buildShiftHistoryEntries(shifts: AppShift[], deliveries: Delivery[], fuelSettings: FuelSettings): ShiftHistoryEntry[] {
+  const completed = getCompletedDeliveries(deliveries);
+
+  return shifts
+    .map((shift) => {
+      const shiftDeliveries = completed.filter((delivery) => delivery.shiftId === shift.id);
+      const income = shiftDeliveries.reduce(
+        (sum, delivery) => sum + (delivery.completion?.actualAmount ?? 0) + (delivery.completion?.tipCash ?? 0),
+        0
+      );
+      const km = shift.totalKm ?? shift.actualDrivenKm ?? shiftDeliveries.reduce((sum, d) => sum + (d.completion?.actualKm ?? d.estimatedKm), 0);
+      const fuelCost = shiftDeliveries.reduce(
+        (sum, delivery) => sum + calculateFuelCost(delivery.completion?.actualKm ?? delivery.estimatedKm, fuelSettings),
+        0
+      );
+      const profit = income - fuelCost;
+      const workingMinutes = calculateWorkingMinutes(shift.startedAt, shift.endedAt ?? new Date().toISOString(), shift.breaks ?? []);
+      const workingHours = workingMinutes / 60;
+      const hourlyRate = workingHours > 0 ? profit / workingHours : 0;
+
+      return {
+        id: shift.id,
+        date: shift.dateKey,
+        income: round2(income),
+        km: round2(km),
+        profit: round2(profit),
+        hourlyRate: round2(hourlyRate),
+        workingHours: round2(workingHours)
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export function summarizeCurrentWeek(entries: ShiftHistoryEntry[]) {
+  const now = new Date();
+  const start = new Date(now);
+  const day = start.getDay();
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  start.setDate(start.getDate() - diffToMonday);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+  return summarizeRange(entries, start, end);
+}
+
+export function summarizeCurrentMonth(entries: ShiftHistoryEntry[]) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return summarizeRange(entries, start, end);
+}
+
+export function buildWeeklyChartSeries(entries: ShiftHistoryEntry[]) {
+  const byDate = new Map<string, number>();
+  for (const entry of entries) {
+    byDate.set(entry.date, (byDate.get(entry.date) ?? 0) + entry.profit);
+  }
+  return [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-7)
+    .map(([date, profit]) => ({ date, profit: round2(profit) }));
+}
+
+export function buildMonthlyChartSeries(entries: ShiftHistoryEntry[]) {
+  const byMonth = new Map<string, number>();
+  for (const entry of entries) {
+    const monthKey = entry.date.slice(0, 7);
+    byMonth.set(monthKey, (byMonth.get(monthKey) ?? 0) + entry.profit);
+  }
+  return [...byMonth.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-6)
+    .map(([month, profit]) => ({ month, profit: round2(profit) }));
+}
+
+function summarizeRange(entries: ShiftHistoryEntry[], start: Date, end: Date) {
+  const filtered = entries.filter((entry) => {
+    const date = new Date(entry.date);
+    return date >= start && date < end;
+  });
+  const income = filtered.reduce((sum, entry) => sum + entry.income, 0);
+  const km = filtered.reduce((sum, entry) => sum + entry.km, 0);
+  const profit = filtered.reduce((sum, entry) => sum + entry.profit, 0);
+  const hours = filtered.reduce((sum, entry) => sum + entry.workingHours, 0);
+  const hourlyRate = hours > 0 ? profit / hours : 0;
+  return {
+    shifts: filtered.length,
+    income: round2(income),
+    km: round2(km),
+    profit: round2(profit),
+    hourlyRate: round2(hourlyRate)
+  };
 }
