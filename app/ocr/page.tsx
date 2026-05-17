@@ -1,1 +1,5 @@
-export { default } from "@/app/screenshot-analyzer/page";
+import { redirect } from "next/navigation";
+
+export default function OcrRedirectPage() {
+  redirect("/import-screenshot");
+}

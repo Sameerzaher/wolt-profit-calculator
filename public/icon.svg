@@ -1,14 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="DeliveryCalc">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0f62fe" />
-      <stop offset="100%" stop-color="#1e40af" />
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
     </linearGradient>
   </defs>
-  <rect x="24" y="24" width="464" height="464" rx="110" fill="url(#bg)" />
-  <circle cx="256" cy="256" r="150" fill="#ffffff" opacity="0.15" />
-  <path
-    d="M160 292h192v42H160zm24-116h44v158h-44zm98 0h44v158h-44z"
-    fill="#ffffff"
-  />
+  <rect width="512" height="512" rx="112" fill="#020617"/>
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#g)"/>
+  <path fill="#ecfdf5" d="M148 168h216v48H148zm32 80h48v176h-48zm104 0h48v176h-48z"/>
+  <circle cx="256" cy="256" r="168" fill="none" stroke="#ecfdf5" stroke-width="8" opacity="0.25"/>
 </svg>

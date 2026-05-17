@@ -7,7 +7,9 @@ export const STORAGE_KEYS = {
   appSettings: "woltcalc_v2_app_settings",
   fuelSettings: "woltcalc_v2_fuel_settings",
   screenshotLastAnalysis: "woltcalc_v2_screenshot_last_analysis",
-  dayShifts: "woltcalc_v2_day_shifts"
+  dayShifts: "woltcalc_v2_day_shifts",
+  courierApp: "courier_app_v5",
+  courierOnboarding: "courier_onboarding_v1"
 } as const;
 
 export const DAY_SHIFT_STORAGE_PREFIX = "woltcalc_day_" as const;
@@ -39,7 +41,7 @@ export const MAX_STORED_DELIVERIES = 150;
 export const TIME_ZONE_IL = "Asia/Jerusalem";
 
 /** Backup file schema version — bump when structure changes */
-export const BACKUP_SCHEMA_VERSION = 4 as const;
+export const BACKUP_SCHEMA_VERSION = 5 as const;
 
 /** Weekly gross goal (₪) for monthly dashboard — stored in localStorage */
 export const WEEKLY_GOAL_STORAGE_KEY = "woltcalc_weekly_goal_ils";

@@ -3,14 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --nav-height: 7.25rem;
-  --sticky-bar-height: 3.25rem;
-  --app-footer-offset: calc(var(--nav-height) + var(--sticky-bar-height) + env(safe-area-inset-bottom, 0px));
+  --bg: 2 6 14;
+  --surface: 15 23 42;
+  --surface-elevated: 30 41 59;
+  --border-glass: 255 255 255;
+  --nav-height: 5.25rem;
+  --sticky-action-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 0.35rem);
+  --app-footer-offset: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 1.25rem);
+  --theme-color: #02040a;
 }
 
 html {
-  font-size: 17px;
+  font-size: 18px;
   -webkit-text-size-adjust: 100%;
+}
+
+@media (min-width: 390px) {
+  html {
+    font-size: 19px;
+  }
 }
 
 body {
@@ -19,6 +30,17 @@ body {
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
   text-align: right;
+  overscroll-behavior-y: none;
+  background-color: rgb(var(--bg));
+  color: #f1f5f9;
+}
+
+.app-shell {
+  padding-bottom: var(--app-footer-offset);
+}
+
+.app-page-sticky {
+  padding-bottom: calc(var(--app-footer-offset) + 5.75rem);
 }
 
 input,
@@ -36,19 +58,31 @@ textarea {
 
 @layer components {
   .app-page {
-    @apply space-y-4 pb-[var(--app-footer-offset)];
+    @apply space-y-5;
+  }
+
+  .glass {
+    @apply rounded-2xl border border-white/[0.08] bg-white/[0.04] shadow-glass backdrop-blur-glass;
+  }
+
+  .glass-elevated {
+    @apply rounded-2xl border border-white/[0.1] bg-white/[0.07] shadow-glass-lg backdrop-blur-glass;
+  }
+
+  .glass-strong {
+    @apply rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-white/[0.04] to-transparent shadow-glow backdrop-blur-glass;
   }
 
   .app-card {
-    @apply rounded-2xl border border-slate-800 bg-slate-900 p-4;
+    @apply glass p-5;
   }
 
   .field-input {
-    @apply h-10 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white;
+    @apply h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 text-base text-white placeholder:text-slate-500 backdrop-blur-sm transition;
   }
 
   .field-input:focus {
-    @apply border-emerald-500/50 outline-none ring-1 ring-emerald-500/30;
+    @apply border-emerald-400/40 bg-white/[0.06] outline-none ring-2 ring-emerald-500/20;
   }
 
   .date-input {
@@ -57,16 +91,28 @@ textarea {
     text-align: start;
   }
 
+  .btn-primary {
+    @apply flex min-h-[3.25rem] items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 text-base font-bold text-slate-950 shadow-lg shadow-emerald-500/25 transition active:scale-[0.98] disabled:opacity-45;
+  }
+
+  .btn-secondary {
+    @apply flex min-h-[3.25rem] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-5 text-base font-bold text-slate-200 backdrop-blur-sm transition active:scale-[0.98];
+  }
+
   .btn-pill {
-    @apply min-h-[2.75rem] rounded-xl border px-2 py-2 text-xs font-bold transition;
+    @apply min-h-[3rem] rounded-xl border px-3 py-2.5 text-sm font-bold transition-all duration-200;
   }
 
   .btn-pill-active {
-    @apply border-emerald-400 bg-emerald-500/20 text-emerald-100;
+    @apply border-emerald-400/50 bg-emerald-500/20 text-emerald-50 shadow-glow;
   }
 
   .btn-pill-idle {
-    @apply border-slate-700 bg-slate-950 text-slate-300;
+    @apply border-white/10 bg-white/[0.03] text-slate-400;
+  }
+
+  .text-label {
+    @apply text-sm font-semibold text-slate-400;
   }
 }
 
@@ -79,7 +125,6 @@ textarea {
   display: none;
 }
 
-/* Native date/time controls stay readable in RTL layout */
 input[type="date"],
 input[type="time"],
 input[type="datetime-local"] {
@@ -89,4 +134,14 @@ input[type="datetime-local"] {
 
 input[type="file"]::file-selector-button {
   margin-inline-end: 0.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
