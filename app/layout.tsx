@@ -5,8 +5,8 @@ import StickyShiftSummaryBar from "@/components/StickyShiftSummaryBar";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WoltCalc V2",
-  description: "Cockpit חכם לשליח/ת Wolt לקבלת החלטות בזמן אמת"
+  title: "DeliveryCalc",
+  description: "מחשבון רווח לשליחים — Wolt, HaAt ו-Ten Bis"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -14,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="he" dir="rtl">
       <body className="bg-slate-950 text-slate-100">
         <AppDataProvider>
-          <div className="mx-auto min-h-screen max-w-lg px-4 pb-44 pt-4">{children}</div>
+          <div className="mx-auto min-h-screen max-w-lg px-4 pb-[var(--app-footer-offset)] pt-4">{children}</div>
           <StickyShiftSummaryBar />
           <BottomNav />
         </AppDataProvider>

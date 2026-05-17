@@ -14,6 +14,7 @@ import {
   summarizeTasksForOcrPreview,
   validateSessions
 } from "@/features/screenshot-analyzer/analysis";
+import { mergeSnapshotIntoDayRecord } from "@/src/lib/migrateDayShifts";
 import { readShiftAnalysisByDate, saveShiftAnalysisByDate } from "@/lib/storage";
 import EditableOcrTable from "@/src/components/ocr/EditableOcrTable";
 import { getTodayDateInput } from "@/src/lib/dateTime";
@@ -39,7 +40,7 @@ type PendingOcrBatch = {
 const DEFAULT_COST_PER_KM = 0.7;
 
 export default function ScreenshotAnalyzerPage() {
-  const { startShift, updateActiveShiftSnapshot } = useAppData();
+  const { startShift, updateActiveShiftSnapshot, saveDayShift, dayShifts } = useAppData();
   const today = getTodayDateInput();
   const [shiftDate, setShiftDate] = useState(today);
 
@@ -120,7 +121,7 @@ export default function ScreenshotAnalyzerPage() {
 
   useEffect(() => {
     if (tasks.length === 0 || !confirmedAnalysis) return;
-    saveShiftAnalysisByDate({
+    const snapshot = {
       shiftDate,
       sessions,
       tasks,
@@ -131,8 +132,11 @@ export default function ScreenshotAnalyzerPage() {
       analysis: confirmedAnalysis,
       createdAt,
       updatedAt: new Date().toISOString()
-    });
-  }, [actualDrivenKmValue, confirmedAnalysis, costPerKmValue, createdAt, rawTexts, sessions, shiftDate, suggestedDate, tasks]);
+    };
+    saveShiftAnalysisByDate(snapshot);
+    const existingDay = dayShifts.find((record) => record.shiftDate === shiftDate) ?? null;
+    saveDayShift(mergeSnapshotIntoDayRecord(existingDay, snapshot));
+  }, [actualDrivenKmValue, confirmedAnalysis, costPerKmValue, createdAt, dayShifts, rawTexts, saveDayShift, sessions, shiftDate, suggestedDate, tasks]);
 
   useEffect(() => {
     setConfirmedAnalysis(null);
@@ -404,7 +408,7 @@ export default function ScreenshotAnalyzerPage() {
           value={shiftDate}
           max={today}
           onChange={(event) => setShiftDate(event.target.value || today)}
-          className="h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+          className="date-input h-11 rounded-xl"
         />
         {suggestedDate ? (
           <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
@@ -437,7 +441,7 @@ export default function ScreenshotAnalyzerPage() {
             accept="image/*"
             multiple
             onChange={onPickFiles}
-            className="mt-3 block w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-emerald-500 file:px-4 file:py-3 file:text-sm file:font-black file:text-slate-950"
+            className="mt-3 block w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-200 file:rounded-xl file:border-0 file:bg-emerald-500 file:px-4 file:py-3 file:text-sm file:font-black file:text-slate-950"
           />
         </div>
         <p className="mt-2 text-xs text-slate-400">

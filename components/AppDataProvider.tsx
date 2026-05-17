@@ -9,17 +9,20 @@ import { dateKey } from "@/lib/utils";
 import { useAppStore } from "@/hooks/useAppStore";
 import {
   useAppSettingsStorage,
+  useDayShiftsStorage,
   useDeliveriesStorage,
   useFuelSettingsStorage,
   usePreferredZonesStorage,
   useShiftsStorage
 } from "@/hooks/storage";
-import { listAllShiftAnalyses, saveShiftAnalysisByDate } from "@/lib/storage";
+import { mergeDayRecords } from "@/src/lib/migrateDayShifts";
+import { listAllDayShifts, listAllShiftAnalyses, runDayShiftsMigrationIfNeeded, saveDayShift as persistDayShift, saveShiftAnalysisByDate } from "@/lib/storage";
 import type {
   AppSettings,
   AppShift,
   AppShiftBreak,
   AppShiftSession,
+  DayShiftRecord,
   Delivery,
   DeliveryCompletionInput,
   FuelSettings,
@@ -30,11 +33,13 @@ import type {
 type AppDataContextType = {
   deliveries: Delivery[];
   shifts: AppShift[];
+  dayShifts: DayShiftRecord[];
   preferredZones: string[];
   appSettings: AppSettings;
   fuelSettings: FuelSettings;
   isHydrated: boolean;
   activeDelivery: Delivery | null;
+  saveDayShift: (record: DayShiftRecord) => void;
   runQuickCheck: (input: QuickCheckInput) => ReturnType<typeof calculateQuickCheck>;
   startShift: () => void;
   endShift: () => void;
@@ -90,6 +95,7 @@ function getCurrentShift(shifts: AppShift[], activeShiftId: string | null): AppS
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const deliveriesStore = useDeliveriesStorage();
   const shiftsStore = useShiftsStorage();
+  const dayShiftsStore = useDayShiftsStorage();
   const preferredZonesStore = usePreferredZonesStorage();
   const appSettingsStore = useAppSettingsStorage();
   const fuelSettingsStore = useFuelSettingsStorage();
@@ -97,6 +103,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const storesHydrated =
     deliveriesStore.isHydrated &&
     shiftsStore.isHydrated &&
+    dayShiftsStore.isHydrated &&
     preferredZonesStore.isHydrated &&
     appSettingsStore.isHydrated &&
     fuelSettingsStore.isHydrated;
@@ -118,6 +125,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setCostPerKm(fuelSettingsStore.state.costPerKm);
   }, [fuelSettingsStore.state.costPerKm, setCostPerKm]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    runDayShiftsMigrationIfNeeded();
+    const migrated = listAllDayShifts();
+    if (migrated.length > 0 && dayShiftsStore.state.length === 0) {
+      dayShiftsStore.setValue(migrated);
+    } else if (migrated.length > dayShiftsStore.state.length) {
+      dayShiftsStore.setValue(mergeDayRecords(dayShiftsStore.state, migrated));
+    }
+  }, [isHydrated]);
+
+  const saveDayShift = (record: DayShiftRecord) => {
+    persistDayShift(record);
+    dayShiftsStore.setValue((current) => {
+      const next = current.filter((item) => item.shiftDate !== record.shiftDate);
+      return [record, ...next].sort((a, b) => b.shiftDate.localeCompare(a.shiftDate));
+    });
+  };
 
   const activeDelivery =
     deliveriesStore.state.find((delivery) => delivery.id === appSettingsStore.state.activeDeliveryId) ?? null;
@@ -405,6 +431,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       appSettings: appSettingsStore.state,
       fuelSettings: fuelSettingsStore.state,
       shiftAnalyses: listAllShiftAnalyses(),
+      dayShifts: listAllDayShifts(),
       ...(weeklyGoalIls ? { weeklyGoalIls } : {})
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -462,6 +489,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
+    if (Array.isArray(o.dayShifts)) {
+      const imported = o.dayShifts as DayShiftRecord[];
+      const merged = mergeDayRecords(dayShiftsStore.state, imported);
+      dayShiftsStore.setValue(merged);
+      for (const record of merged) {
+        persistDayShift(record);
+      }
+    }
     if (typeof o.weeklyGoalIls === "string" && o.weeklyGoalIls.trim()) {
       try {
         localStorage.setItem(WEEKLY_GOAL_STORAGE_KEY, o.weeklyGoalIls.trim());
@@ -475,6 +510,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const resetData = () => {
     deliveriesStore.setValue([]);
     shiftsStore.setValue([]);
+    dayShiftsStore.setValue([]);
     preferredZonesStore.setValue([]);
     appSettingsStore.setValue(DEFAULT_APP_SETTINGS);
     fuelSettingsStore.setValue(DEFAULT_FUEL_SETTINGS);
@@ -485,7 +521,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const value: AppDataContextType = {
     deliveries: deliveriesStore.state,
     shifts: shiftsStore.state,
+    dayShifts: dayShiftsStore.state,
     preferredZones: preferredZonesStore.state,
+    saveDayShift,
     appSettings: appSettingsStore.state,
     fuelSettings: fuelSettingsStore.state,
     isHydrated,

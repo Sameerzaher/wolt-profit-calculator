@@ -4,7 +4,11 @@ const config: Config = {
   darkMode: "class",
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}"
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
+    "./hooks/**/*.{js,ts,jsx,tsx,mdx}",
+    "./features/**/*.{js,ts,jsx,tsx,mdx}",
+    "./lib/**/*.{js,ts,jsx,tsx,mdx}"
   ],
   theme: {
     extend: {
@@ -32,6 +36,10 @@ const config: Config = {
           "Arial",
           "sans-serif"
         ]
+      },
+      spacing: {
+        nav: "var(--nav-height)",
+        sticky: "var(--sticky-bar-height)"
       }
     }
   },

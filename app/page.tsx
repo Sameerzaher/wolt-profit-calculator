@@ -4,12 +4,12 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="space-y-5 pb-32">
+    <main className="app-page space-y-5">
       <section className="rounded-3xl border border-emerald-500/30 bg-gradient-to-b from-emerald-500/10 to-slate-900 p-5">
-        <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">WoltCalc</p>
-        <h1 className="mt-2 text-3xl font-black leading-tight text-white">Know your real profit as a Wolt driver</h1>
+        <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">DeliveryCalc</p>
+        <h1 className="mt-2 text-3xl font-black leading-tight text-white">כמה באמת נשאר לך נטו היום?</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-200">
-          מעקב פשוט אחרי משמרות, דלק, ק״מ וזמן עבודה כדי להבין כמה באמת נשאר לך נטו בכל שעה.
+          מעקב פשוט אחרי Wolt, HaAt ו-Ten Bis — מקטעים, דלק, ק״מ ורווח נטו לשעה.
         </p>
       </section>
 
@@ -21,7 +21,7 @@ export default function HomePage() {
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
         <h2 className="text-lg font-black text-white">הפתרון</h2>
         <p className="mt-2 text-sm text-slate-300">
-          WoltCalc מחשב אוטומטית את הרווח האמיתי לפי נתוני משמרת וצילומי מסך, כולל ניתוח מהיר של הכנסות וזמן עבודה.
+          DeliveryCalc מחשב אוטומטית רווח נטו לפי פלטפורמה, זמן עבודה וק״מ — כולל השוואה בין Wolt, HaAt ו-Ten Bis.
         </p>
       </section>
 
@@ -48,20 +48,32 @@ export default function HomePage() {
       </section>
 
       <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-        <h2 className="text-xl font-black text-white">Start tracking your shift</h2>
-        <p className="mt-1 text-sm text-emerald-100">התחל עכשיו לעקוב אחרי כל משמרת ולדעת בדיוק כמה אתה מרוויח נטו.</p>
+        <h2 className="text-xl font-black text-white">התחל לעקוב אחרי היום</h2>
+        <p className="mt-1 text-sm text-emerald-100">הוסף מקטע לכל פלטפורמה וראה מי הכי משתלם לך היום.</p>
         <div className="mt-3 grid grid-cols-1 gap-2">
           <Link
-            href="/active-shift"
+            href="/daily-shift"
             className="flex min-h-[3.2rem] items-center justify-center rounded-2xl bg-emerald-500 text-base font-black text-slate-950"
           >
-            Start tracking your shift
+            רישום משמרת יומית
+          </Link>
+          <Link
+            href="/active-shift"
+            className="flex min-h-[3rem] items-center justify-center rounded-2xl border border-emerald-400/40 bg-slate-900 text-sm font-bold text-emerald-100"
+          >
+            מעקב משמרת חיה (Wolt)
+          </Link>
+          <Link
+            href="/platform-analytics"
+            className="flex min-h-[3rem] items-center justify-center rounded-2xl border border-sky-500/40 bg-slate-900 text-sm font-bold text-sky-100"
+          >
+            ניתוח פלטפורמות
           </Link>
           <Link
             href="/screenshot-analyzer"
-            className="flex min-h-[3rem] items-center justify-center rounded-2xl border border-emerald-400/40 bg-slate-900 text-sm font-bold text-emerald-100"
+            className="flex min-h-[3rem] items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-sm font-bold text-slate-200"
           >
-            העלאת צילומי מסך לניתוח
+            צילומי מסך (Wolt)
           </Link>
         </div>
       </section>

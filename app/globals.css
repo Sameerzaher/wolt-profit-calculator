@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --nav-height: 7.25rem;
+  --sticky-bar-height: 3.25rem;
+  --app-footer-offset: calc(var(--nav-height) + var(--sticky-bar-height) + env(safe-area-inset-bottom, 0px));
+}
+
 html {
   font-size: 17px;
   -webkit-text-size-adjust: 100%;
@@ -28,6 +34,42 @@ textarea {
   direction: rtl;
 }
 
+@layer components {
+  .app-page {
+    @apply space-y-4 pb-[var(--app-footer-offset)];
+  }
+
+  .app-card {
+    @apply rounded-2xl border border-slate-800 bg-slate-900 p-4;
+  }
+
+  .field-input {
+    @apply h-10 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white;
+  }
+
+  .field-input:focus {
+    @apply border-emerald-500/50 outline-none ring-1 ring-emerald-500/30;
+  }
+
+  .date-input {
+    @apply field-input;
+    direction: ltr;
+    text-align: start;
+  }
+
+  .btn-pill {
+    @apply min-h-[2.75rem] rounded-xl border px-2 py-2 text-xs font-bold transition;
+  }
+
+  .btn-pill-active {
+    @apply border-emerald-400 bg-emerald-500/20 text-emerald-100;
+  }
+
+  .btn-pill-idle {
+    @apply border-slate-700 bg-slate-950 text-slate-300;
+  }
+}
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -35,4 +77,16 @@ textarea {
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* Native date/time controls stay readable in RTL layout */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  direction: ltr;
+  text-align: start;
+}
+
+input[type="file"]::file-selector-button {
+  margin-inline-end: 0.75rem;
 }

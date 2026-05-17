@@ -2,7 +2,7 @@
 
 import { DEFAULT_APP_SETTINGS, DEFAULT_FUEL_SETTINGS, STORAGE_KEYS } from "@/lib/constants";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
-import type { AppSettings, AppShift, Delivery, FuelSettings } from "@/types/models";
+import type { AppSettings, AppShift, DayShiftRecord, Delivery, FuelSettings } from "@/types/models";
 
 export function useDeliveriesStorage() {
   return useLocalStorageState<Delivery[]>(STORAGE_KEYS.deliveries, []);
@@ -22,4 +22,8 @@ export function useAppSettingsStorage() {
 
 export function useFuelSettingsStorage() {
   return useLocalStorageState<FuelSettings>(STORAGE_KEYS.fuelSettings, DEFAULT_FUEL_SETTINGS);
+}
+
+export function useDayShiftsStorage() {
+  return useLocalStorageState<DayShiftRecord[]>(STORAGE_KEYS.dayShifts, []);
 }

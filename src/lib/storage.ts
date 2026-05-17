@@ -1,4 +1,11 @@
-import { STORAGE_KEYS } from "@/lib/constants";
+import { DAY_SHIFT_STORAGE_PREFIX, STORAGE_KEYS } from "@/lib/constants";
+import {
+  isDayShiftsMigrated,
+  markDayShiftsMigrated,
+  mergeDayRecords,
+  migrateSnapshotToDayRecord
+} from "@/src/lib/migrateDayShifts";
+import type { DayShiftRecord } from "@/src/types/delivery-platform";
 import type { ScreenshotAnalysisSnapshot } from "@/types/models";
 
 const SHIFT_PREFIX = "woltcalc_shift_";
@@ -11,6 +18,7 @@ export function exportAllFromStorage() {
     preferredZones: safeRead(STORAGE_KEYS.preferredZones, []),
     appSettings: safeRead(STORAGE_KEYS.appSettings, null),
     fuelSettings: safeRead(STORAGE_KEYS.fuelSettings, null),
+    dayShifts: listAllDayShifts(),
     exportedAt: new Date().toISOString()
   };
 }
@@ -45,6 +53,65 @@ export function readShiftAnalysisByDate(shiftDate: string): ScreenshotAnalysisSn
 
 export function deleteShiftAnalysisByDate(shiftDate: string) {
   safeRemove(getShiftAnalysisStorageKey(shiftDate));
+}
+
+export function getDayShiftStorageKey(shiftDate: string): string {
+  return `${DAY_SHIFT_STORAGE_PREFIX}${shiftDate}`;
+}
+
+export function readDayShiftByDate(shiftDate: string): DayShiftRecord | null {
+  runDayShiftsMigrationIfNeeded();
+  const fromIndex = readDayShiftsIndex().find((record) => record.shiftDate === shiftDate);
+  if (fromIndex) return fromIndex;
+
+  const legacy = safeRead<DayShiftRecord | null>(getDayShiftStorageKey(shiftDate), null);
+  if (!legacy) return null;
+  upsertDayShiftInIndex(legacy);
+  return legacy;
+}
+
+export function saveDayShift(record: DayShiftRecord) {
+  const next: DayShiftRecord = { ...record, updatedAt: new Date().toISOString(), schemaVersion: 1 };
+  safeWrite(getDayShiftStorageKey(record.shiftDate), next);
+  upsertDayShiftInIndex(next);
+}
+
+export function deleteDayShiftByDate(shiftDate: string) {
+  safeRemove(getDayShiftStorageKey(shiftDate));
+  const index = readDayShiftsIndex().filter((record) => record.shiftDate !== shiftDate);
+  safeWrite(STORAGE_KEYS.dayShifts, index);
+}
+
+export function listAllDayShifts(): DayShiftRecord[] {
+  runDayShiftsMigrationIfNeeded();
+  return readDayShiftsIndex().sort((a, b) => b.shiftDate.localeCompare(a.shiftDate));
+}
+
+export function runDayShiftsMigrationIfNeeded(): void {
+  if (typeof window === "undefined") return;
+  if (isDayShiftsMigrated()) return;
+
+  const existing = readDayShiftsIndex();
+  const fromSnapshots = listAllShiftAnalyses().map(migrateSnapshotToDayRecord);
+  const merged = mergeDayRecords(existing, fromSnapshots);
+
+  safeWrite(STORAGE_KEYS.dayShifts, merged);
+  for (const record of merged) {
+    safeWrite(getDayShiftStorageKey(record.shiftDate), record);
+  }
+  markDayShiftsMigrated();
+}
+
+function readDayShiftsIndex(): DayShiftRecord[] {
+  return safeRead<DayShiftRecord[]>(STORAGE_KEYS.dayShifts, []);
+}
+
+function upsertDayShiftInIndex(record: DayShiftRecord) {
+  const index = readDayShiftsIndex();
+  const next = index.filter((item) => item.shiftDate !== record.shiftDate);
+  next.push(record);
+  next.sort((a, b) => b.shiftDate.localeCompare(a.shiftDate));
+  safeWrite(STORAGE_KEYS.dayShifts, next);
 }
 
 export function listAllShiftAnalyses(): ScreenshotAnalysisSnapshot[] {
